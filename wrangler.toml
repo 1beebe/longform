@@ -1,0 +1,27 @@
+name = "longform-planner"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# Public settings only. Secrets are set in the Cloudflare dashboard or with
+# `wrangler secret put`, never committed:
+#   BUFFER_CLIENT_SECRET  the Buffer app's client secret
+#   TOKEN_KEY             32 random bytes, base64 (openssl rand -base64 32)
+#   MINDSTUDIO_API_KEY    or ANTHROPIC_API_KEY, for the suggestion step
+[vars]
+APP_NAME = "Longform"
+APP_URL = "https://longform.lbeebe.com"
+BUFFER_CLIENT_ID = "nFe0ZKJq2xTJd2BuizulbqRkuQ2zZG-i7_ijnrace06"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "SET_ME_NEW_KV_NAMESPACE_ID"
+
+[observability]
+enabled = true
+
+# The page's CSS, JS and icon are bundled into the Worker as text, so a plain
+# script upload deploys the whole app.
+[[rules]]
+type = "Text"
+globs = ["**/*.css", "**/*.svg", "**/app.js"]
+fallthrough = false
