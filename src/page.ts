@@ -66,7 +66,8 @@ function landing(name: string, show: boolean): string {
 
 <section class="l-problem" aria-labelledby="l-problem-h">
   <div class="l-wrap">
-    <!-- VOICE: the problem statement. Replace with how you'd say it. -->
+    <!-- VOICE: the problem statement. Replace with how you'd say it. Ligaya named two problems:
+         promoting the piece, and not seeing long-form pieces in the Buffer queue (covered in .l-queue below). -->
     <h2 id="l-problem-h">Writing the piece is half the work. <span>Getting it read is the other half.</span></h2>
     <p>Promoting a long piece means rereading your own draft, pulling lines for each channel and finding days your queue isn't already full. ${n} does that part, from what you already wrote.</p>
   </div>
@@ -95,6 +96,20 @@ function landing(name: string, show: boolean): string {
         <p>Edit, move or untick any post, then save. They land in Buffer as drafts on their dates.</p>
       </li>
     </ol>
+  </div>
+</section>
+
+<section class="l-queue" aria-labelledby="l-queue-h">
+  <div class="l-wrap l-queue-grid">
+    <div class="l-stack">
+      <figure class="frame"><img src="/shots/pubweek.webp" width="1400" height="682" loading="lazy" alt="The planner calendar with the long-form piece starred on its publish day, between posts already in the Buffer queue and the suggested posts."></figure>
+      <figure class="frame"><img src="/shots/placeholder.webp" width="700" height="494" loading="lazy" alt="The publish-day placeholder card: a dated draft saved on a chosen Buffer channel that holds the piece's place and links back to the doc."></figure>
+    </div>
+    <div>
+      <h2 id="l-queue-h">Your long-form piece, in your Buffer queue</h2>
+      <p>On publish day, ${n} saves a dated draft to Buffer that names the piece and links to your doc. Your social posts and your article show up on one calendar.</p>
+      <p class="note"><b>It's a placeholder, not a post.</b> Buffer won't publish it. You still publish the article yourself on LinkedIn, Substack or your newsletter.</p>
+    </div>
   </div>
 </section>
 

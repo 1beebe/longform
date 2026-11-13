@@ -146,7 +146,7 @@ button.day.pickable:hover{box-shadow:inset 0 0 0 2px var(--accent)}
 .ev.s{border:1.5px dashed var(--ink);background:var(--surface);font-weight:600}
 .ev.s.done{border-style:solid;border-color:var(--good)}
 .ev.s.off{opacity:.45}
-.ev.p{background:var(--accent);color:var(--accent-ink);font-weight:650;padding:5px 7px}
+.ev.p{background:var(--accent);color:var(--accent-ink);font-weight:650;padding:5px 7px;white-space:normal}
 .ev.more{color:var(--faint);padding:0 6px}
 button.ev{font:inherit;font-size:11.5px;text-align:left;width:100%;cursor:pointer;color:inherit;transition:background .12s,transform .12s}
 button.ev.s:hover{background:var(--tint);transform:translateY(-1px)}
@@ -254,14 +254,22 @@ button.ev.s:hover{background:var(--tint);transform:translateY(-1px)}
 .l-steps .num{margin-top:22px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--tint);color:var(--accent);font-weight:700;font-size:14px}
 .l-steps h3{font-size:21px;margin-top:12px;letter-spacing:-.025em}
 .l-steps p{color:var(--muted);margin-top:6px;font-size:16px;max-width:36ch}
-.l-own{background:var(--raised);padding:clamp(64px,11vh,120px) 0}
+.l-own{padding:clamp(64px,11vh,120px) 0}
 .l-own-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(28px,5vw,80px);align-items:center}
 .l-own p{color:var(--muted);font-size:18px;margin-top:18px;max-width:46ch}
 .l-facts{list-style:none;padding:0;margin-top:26px;display:flex;flex-direction:column;gap:10px}
 .l-facts li{display:flex;gap:10px;font-weight:600;font-size:16px}
 .l-facts li::before{content:"✓";color:var(--accent);font-weight:700}
 .l-own .frame{max-width:460px;justify-self:end;width:100%}
-.l-close{padding:clamp(72px,13vh,140px) 0;text-align:center}
+.l-close{padding:clamp(72px,13vh,140px) 0;text-align:center;background:var(--raised)}
+.l-queue{background:var(--raised);padding:clamp(64px,11vh,120px) 0}
+.l-queue-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:clamp(28px,5vw,80px);align-items:center}
+.l-queue h2{font-size:clamp(30px,3.6vw,48px);letter-spacing:-.04em}
+.l-queue p{color:var(--muted);font-size:18px;margin-top:18px;max-width:46ch}
+.l-queue .note{margin-top:22px;padding:14px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--border);font-size:16px;color:var(--ink);max-width:46ch}
+.l-queue .note b{font-weight:650}
+.l-stack{position:relative;padding-bottom:18%}
+.l-stack .frame:last-child{position:absolute;right:-2%;bottom:0;width:52%}
 .l-close p{color:var(--muted);font-size:18px;margin-top:12px}
 .l-close .btn{margin-top:28px}
 #l-banners .banner{max-width:34ch}
@@ -277,6 +285,9 @@ button.ev.s:hover{background:var(--tint);transform:translateY(-1px)}
   .l-steps .frame{aspect-ratio:auto}
   .l-own-grid{grid-template-columns:1fr}
   .l-own .frame{justify-self:start}
+  .l-queue-grid{grid-template-columns:1fr}
+  .l-stack .frame:last-child{right:0}
+  .l-queue-grid > div:first-child{order:2}
 }
 @media (max-width:900px){
   .sources{grid-template-columns:1fr}

@@ -19,6 +19,10 @@ import stepDoc from "../public/shots/step-doc.webp";
 import stepPosts from "../public/shots/step-posts.webp";
 // @ts-ignore
 import post from "../public/shots/post.webp";
+// @ts-ignore
+import pubweek from "../public/shots/pubweek.webp";
+// @ts-ignore
+import placeholder from "../public/shots/placeholder.webp";
 
 type File = { body: string | ArrayBuffer; type: string; immutable?: boolean };
 const webp = (body: ArrayBuffer): File => ({ body, type: "image/webp", immutable: true });
@@ -34,4 +38,6 @@ export const STATIC: Record<string, File> = {
   "/shots/step-doc.webp": webp(stepDoc),
   "/shots/step-posts.webp": webp(stepPosts),
   "/shots/post.webp": webp(post),
+  "/shots/pubweek.webp": webp(pubweek),
+  "/shots/placeholder.webp": webp(placeholder),
 };
