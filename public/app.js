@@ -3,6 +3,11 @@
 (() => {
   const app = document.getElementById("app");
   const dockSlot = document.getElementById("dock-slot");
+  const landingEl = document.getElementById("landing");
+  const top = document.querySelector(".top");
+  const onScroll = () => top.classList.toggle("scrolled", window.scrollY > 8);
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
   const NAME = app.dataset.name || "Longform";
 
   const COLORS = { linkedin: "#2f5f8f", twitter: "#2b2b2b", threads: "#6b4a8a", instagram: "#b04a6a", bluesky: "#1d7bd8", mastodon: "#5b4bd6", facebook: "#3b5bb5", substack: "#e0691a" };
@@ -109,11 +114,13 @@
     } catch (e) { ui.error = e.message; render(); }
   }
 
+  function gIcon() { const t = document.createElement("template"); t.innerHTML = G_ICON; return t.content.firstChild; }
+
   function googleButton(label) {
     if (!me.google || !me.google.ready) return null;
     return me.google.connected
-      ? h("button", { class: "btn", type: "button", disabled: ui.busy === "doc", onclick: openPicker }, ui.busy === "doc" ? "Reading…" : label || "Choose from Google Drive")
-      : h("a", { class: "btn", href: "/google/connect" }, "Connect Google Docs");
+      ? h("button", { class: "btn gbtn", type: "button", disabled: ui.busy === "doc", onclick: openPicker }, gIcon(), ui.busy === "doc" ? "Reading…" : label || "Choose from Google Drive")
+      : h("a", { class: "btn gbtn", href: "/google/connect" }, gIcon(), "Connect Google Docs");
   }
 
   const ago = (iso) => {
@@ -134,7 +141,10 @@
     app.replaceChildren();
     dockSlot.replaceChildren();
     renderWho();
-    if (!me || !me.signedIn) landing();
+    const out = !me || !me.signedIn;
+    if (landingEl) landingEl.hidden = !out;
+    app.hidden = out && Boolean(landingEl);
+    if (out) landing();
     else if (!me.doc) chooseDoc();
     else planner();
     if (focus) { const el = app.querySelector(`[data-key="${focus}"]`); if (el) el.focus(); }
@@ -144,7 +154,7 @@
   function renderWho() {
     const who = document.getElementById("who");
     who.replaceChildren();
-    if (!me || !me.signedIn) return;
+    if (!me || !me.signedIn) { who.append(h("a", { class: "btn small", href: "/connect" }, "Connect Buffer")); return; }
     if (me.orgs && me.orgs.length > 1) {
       who.append(h("select", { class: "pill", "aria-label": "Buffer organization", onchange: async (e) => { await call("/api/org", { id: e.target.value }); await load(); } },
         me.orgs.map((o) => h("option", { value: o.id, selected: o.id === me.organizationId }, o.name))));
@@ -157,20 +167,22 @@
     return [ui.error && h("p", { class: "banner", role: "alert" }, ui.error), ui.notice && h("p", { class: "banner ok", role: "status" }, ui.notice)].filter(Boolean);
   }
 
+  // The landing page is in the HTML (see src/page.ts); only sign-in errors are drawn here.
   function landing() {
-    app.append(h("section", { class: "hero" },
-      h("h1", null, "Plan your long-form"),
-      h("p", { class: "lead" }, "Bring in your draft from Google Docs and your queue from Buffer. We find an open day to publish and suggest posts around it, pulled from what you wrote."),
-      banners(),
-      h("a", { class: "btn", href: "/connect" }, "Connect Buffer"),
-      h("p", { class: "fine" }, "Nothing posts on its own. Suggestions save to Buffer as drafts you approve there."),
-    ));
-    app.append(h("ol", { class: "steps" },
-      h("li", null, h("i", null, "1"), h("b", null, "Connect Buffer"), h("span", null, "We read what's already queued for the next few weeks.")),
-      h("li", null, h("i", null, "2"), h("b", null, "Paste your Google Doc link"), h("span", null, "The draft you're about to publish, shared as “anyone with the link.”")),
-      h("li", null, h("i", null, "3"), h("b", null, "Pick a day, keep the posts you like"), h("span", null, "They save as drafts on their dates, next to a placeholder for the piece itself.")),
-    ));
+    const slot = document.getElementById("l-banners");
+    if (slot) slot.replaceChildren(...banners());
+    else app.append(h("p", null, h("a", { class: "btn", href: "/connect" }, "Connect Buffer")), ...banners());
   }
+
+  // Where you are: Buffer, then the draft, then the posts, then Buffer again.
+  function flow(at) {
+    const steps = ["Connect Buffer", "Choose your draft", "Review the posts", "Save to Buffer"];
+    return h("ol", { class: "flow", "aria-label": "Steps" }, steps.map((t, i) =>
+      h("li", { class: i < at ? "past" : i === at ? "cur" : null, "aria-current": i === at ? "step" : null },
+        h("i", null, i < at ? "✓" : String(i + 1)), h("span", null, t))));
+  }
+
+  const G_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path fill="#A1C2FA" d="M14 2v6h6z"/><path fill="#fff" d="M8 12h8v1.6H8zm0 3h8v1.6H8zm0 3h5v1.6H8z"/></svg>';
 
   function chooseDoc() {
     const url = h("input", { class: "field", type: "url", placeholder: "https://docs.google.com/document/d/…", "aria-label": "Google Doc link", "data-key": "doc-url" });
@@ -181,11 +193,12 @@
       url, h("button", { class: google ? "btn dark" : "btn", type: "submit", disabled: ui.busy === "doc" }, ui.busy === "doc" && !google ? "Reading…" : "Use this doc"));
     const linkHelp = h("p", null, "In Google Docs, click Share and set General access to \u201cAnyone with the link can view.\u201d Then copy the link and paste it here.");
     app.append(
-      h("h1", null, "Plan your long-form"),
-      h("p", { class: "lead" }, `Connected to Buffer${me.org ? ` (${me.org})` : ""}. Now the draft.`),
+      flow(1),
+      h("h1", null, "Now choose your draft"),
+      h("p", { class: "lead" }, `Buffer is connected${me.org ? ` (${me.org})` : ""}. Pick the long-form piece you're about to publish.`),
       ...banners(),
       h("section", { class: "card pick" },
-        h("h2", null, "Choose your Google Doc"),
+        h("h2", null, "Your Google Doc"),
         google
           ? [h("p", null, me.google.connected
               ? "Pick the draft from your Drive. The app can open only the doc you pick, and it never changes it."
@@ -198,6 +211,7 @@
           h("form", { onsubmit: (e) => { e.preventDefault(); useDoc({ text: text.value, title: title.value }); } },
             h("div", { class: "row" }, title), h("div", { class: "row" }, text),
             h("div", { class: "row" }, h("button", { class: "btn dark", type: "submit", disabled: ui.busy === "doc" }, "Use this text")))),
+        h("ul", { class: "reassure" }, h("li", null, "Read only"), h("li", null, "Only the doc you pick"), h("li", null, "Nothing posts on its own")),
       ),
     );
   }
@@ -205,8 +219,10 @@
   function planner() {
     const b = me.board;
     const p = me.plan;
-    app.append(h("h1", null, "Plan your long-form"),
-      h("p", { class: "lead" }, "Your draft from Google Docs, your queue from Buffer. Click any day on the calendar to make it the publish day."),
+    const saved = p && p.suggestions.length > 0 && p.suggestions.every((s) => s.bufferId || s.included === false);
+    app.append(flow(saved ? 4 : 2),
+      h("h1", null, "Your launch plan"),
+      h("p", { class: "lead" }, p ? "A publish day picked from the gaps in your queue, with posts around it from your draft. Click another day to move everything." : "Your draft from Google Docs, your queue from Buffer."),
       ...banners());
     app.append(sources(b));
     if (!b) return;
@@ -358,7 +374,7 @@
       h("div", { class: "legend" }, h("span", null, h("i", { class: "q" }), "Already in your Buffer"), h("span", null, h("i", { class: "s" }), "Suggested post"), h("span", null, h("i", { class: "p" }), "Publish the long-form")),
       h("div", { class: "cal" }, DOW.map((x) => h("div", { class: "dow" }, x)), cells),
       agenda(b, p, by),
-      p ? h("div", { class: "why" }, h("span", { "aria-hidden": "true" }, "💡"),
+      p ? h("div", { class: "why" }, h("span", { class: "star", "aria-hidden": "true" }, "★"),
         h("span", null, ...whyParts(p.reason)),
         ui.picking
           ? h("button", { class: "linkish mv", onclick: () => { ui.picking = false; render(); } }, "Cancel")
@@ -424,7 +440,7 @@
   function postsSection(b, p) {
     const list = cards();
     const ph = placeholder();
-    const intro = "Each post adapts an idea from your draft and appears on the calendar around your publish day. Edit anything and untick what you don't want. They save to Buffer as drafts on those dates, so nothing posts until you approve it there.";
+    const intro = "Each post summarizes or rephrases part of your draft and sits on the calendar around your publish day. Edit anything and untick what you don't want. They save to Buffer as drafts, so nothing posts until you approve it there.";
     const items = [];
     let placed = false;
     for (const c of list) {
@@ -476,7 +492,7 @@
         h("label", { for: `inc${c.slot}` }, "Include"),
         h("span", { class: "when" }, longish(c.date) + (c.date === p.publishDate ? " ★" : ""))),
       h("div", { class: "for" }, dot(c.service), `For ${label(c.service)} · ${ROLE[c.role]}`),
-      h("div", { class: "from" }, c.sectionIndex ? `From section ${c.sectionIndex}${section ? ` (${section.heading})` : ""}: “${c.sourceQuote}”` : `From your whole draft: “${c.sourceQuote}”`),
+      h("div", { class: "from" }, h("b", null, c.sectionIndex ? `From section ${c.sectionIndex}${section ? ` · ${section.heading}` : ""}` : "From your whole draft"), `“${c.sourceQuote}”`),
       area, counter,
       c.role === "launch" && c.text.includes("[link]") ? h("p", { class: "hint" }, "Swap [link] for the piece's link once it's live, here or in Buffer.") : null,
       tools.length ? h("div", { class: "tools" }, tools) : null,
@@ -521,6 +537,7 @@
   function doneCard() {
     const s = ui.justSaved;
     return h("section", { class: "card done", role: "status" },
+      h("div", { class: "tick", "aria-hidden": "true" }, s.failed ? "!" : "✓"),
       h("h2", null, s.failed ? `Saved ${s.saved}, ${s.failed} didn't go through` : `Saved ${s.saved} draft${s.saved === 1 ? "" : "s"} to Buffer`),
       h("p", null, s.failed ? "The ones that didn't save say why on their card. Fix them and save again." : "They're on their dates in your Buffer calendar as drafts. Nothing posts until you approve it there."),
       h("div", { class: "row" },

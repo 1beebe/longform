@@ -1,6 +1,6 @@
 # Longform
 
-Plan a long-form piece around your Buffer queue. Paste a Google Doc link and connect Buffer; Longform finds an open day to publish, suggests supporting posts that summarize or rephrase your draft, and saves the ones you keep to Buffer as dated drafts, next to a publish-day placeholder that links back to the doc. Nothing publishes on its own.
+Plan a long-form piece around your Buffer queue. Connect Buffer and pick your draft in Google Docs; Longform finds an open day to publish, suggests supporting posts that summarize or rephrase your draft, and saves the ones you keep to Buffer as dated drafts, next to a publish-day placeholder that links back to the doc. Nothing publishes on its own.
 
 Working name. Separate product from The Interviewer.
 
@@ -21,6 +21,6 @@ Working name. Separate product from The Interviewer.
 3. **Google (optional, turns on the picker):** in a Google Cloud project, enable the Google Drive API and Google Picker API; set up the OAuth consent screen (External, scope `.../auth/drive.file`); create an OAuth client of type Web application with redirect `https://longform.lbeebe.com/google/callback` and JavaScript origin `https://longform.lbeebe.com`; create an API key restricted to the Picker API and that site. Put the client ID and the project number in `wrangler.toml` (`GOOGLE_CLIENT_ID`, `GOOGLE_APP_ID`), and the client secret and API key in Cloudflare as secrets (`GOOGLE_CLIENT_SECRET`, `GOOGLE_PICKER_KEY`).
 4. `npm install && npm run check`, then deploy.
 
-`npm run preview` serves the front end on :8788 with fixture data (no Buffer, no AI) for layout work.
+`npm run preview` serves the front end on :8788 with fixture data (no Buffer, no AI) for layout work. `STATE=out` shows the landing page, `STATE=nodoc` the draft step, and `DEMO=1` swaps the bracketed fixtures for a public-domain draft (Thoreau's "Walking"). The landing page's screenshots in `public/shots/` are taken from `DEMO=1`, so they show the real app without anyone's private queue or writing.
 
 Not affiliated with Buffer or Google.

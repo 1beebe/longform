@@ -40,8 +40,8 @@ export default {
     const url = new URL(req.url);
     try {
       const file = STATIC[url.pathname];
-      if (req.method === "GET" && file) return new Response(file.body, { headers: headers({ "Content-Type": file.type, "Cache-Control": "no-cache, must-revalidate" }) });
-      if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/app")) return html(appPage(env.APP_NAME || "Longform"));
+      if (req.method === "GET" && file) return new Response(file.body, { headers: headers({ "Content-Type": file.type, "Cache-Control": file.immutable ? "public, max-age=86400" : "no-cache, must-revalidate" }) });
+      if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/app")) return html(appPage(env.APP_NAME || "Longform", !readCookie(req, "sid")));
       if (req.method === "GET" && url.pathname === "/privacy") return html(privacyPage(env.APP_NAME || "Longform"));
       if (req.method === "GET" && url.pathname === "/connect") return connect(env);
       if (req.method === "GET" && url.pathname === "/callback") return callback(req, env, url);

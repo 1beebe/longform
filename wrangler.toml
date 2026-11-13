@@ -28,9 +28,15 @@ id = "dd97f2970bd04760bfd50aff8c5ecef4"
 [observability]
 enabled = true
 
-# The page's CSS, JS and icon are bundled into the Worker as text, so a plain
-# script upload deploys the whole app.
+# The page's CSS, JS and icon are bundled into the Worker as text, and the
+# font and landing screenshots as binary, so a plain script upload deploys
+# the whole app.
 [[rules]]
 type = "Text"
 globs = ["**/*.css", "**/*.svg", "**/app.js"]
+fallthrough = false
+
+[[rules]]
+type = "Data"
+globs = ["**/*.webp", "**/*.woff2"]
 fallthrough = false
