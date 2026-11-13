@@ -88,6 +88,8 @@ main h1{font-size:clamp(30px,3.6vw,44px);margin-top:6px}
 .pick{max-width:760px;margin-top:28px;padding:28px}
 .pick .hint{margin-top:12px}
 .pick h2{font-size:22px}
+.pick.sample{margin-top:16px;padding-block:22px}
+.pick.sample h2{font-size:18px}
 .pick p{color:var(--muted);font-size:15.5px;margin-top:6px}
 .pick .gbtn{display:inline-flex;gap:10px}
 .pick .gbtn svg{width:20px;height:20px}

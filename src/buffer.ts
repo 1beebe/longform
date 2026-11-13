@@ -176,9 +176,10 @@ type PostsPage = {
 // against the live API: posts accepts filter.dueAt { start, end } with status.
 // If Buffer ever rejects the date filter, fall back to paging by status and
 // filtering here (the query Slop Cannon has run in production).
-export async function getQueue(client: BufferClient, organizationId: string, start: string, end: string): Promise<QueueItem[]> {
-  const read = async (withDates: boolean): Promise<QueueItem[]> => {
+export async function getQueue(client: BufferClient, organizationId: string, start: string, end: string): Promise<{ items: QueueItem[]; complete: boolean }> {
+  const read = async (withDates: boolean): Promise<{ items: QueueItem[]; complete: boolean }> => {
     const out: QueueItem[] = [];
+    let complete = false;
     let after: string | undefined;
     for (let page = 0; page < 5; page++) {
       const data = await client.query<PostsPage>(
@@ -201,11 +202,11 @@ export async function getQueue(client: BufferClient, organizationId: string, sta
         if (!node.dueAt) continue;
         out.push({ id: node.id, channelId: node.channelId ?? "", dueAt: node.dueAt, status: node.status ?? "scheduled", text: (node.text ?? "").slice(0, 140) });
       }
-      if (!data.posts.pageInfo?.hasNextPage) break;
+      if (!data.posts.pageInfo?.hasNextPage) { complete = true; break; }
       after = data.posts.pageInfo.endCursor;
     }
     const s = Date.parse(start), e = Date.parse(end);
-    return out.filter((p) => { const t = Date.parse(p.dueAt); return t >= s && t <= e; });
+    return { items: out.filter((p) => { const t = Date.parse(p.dueAt); return t >= s && t <= e; }), complete };
   };
   try {
     return await read(true);

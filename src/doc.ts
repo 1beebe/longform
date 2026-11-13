@@ -86,7 +86,7 @@ export function parsePasted(text: string, title?: string): Doc {
   return buildDoc(t || "Pasted draft", blocks, "");
 }
 
-function buildDoc(title: string, blocks: { kind: "h" | "p"; text: string }[], url: string): Doc {
+export function buildDoc(title: string, blocks: { kind: "h" | "p"; text: string }[], url: string): Doc {
   const sections: Section[] = [];
   let cur: Section | undefined;
   for (const b of blocks) {
