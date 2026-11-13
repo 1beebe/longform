@@ -31,6 +31,8 @@ const SECURITY: Record<string, string> = {
     "default-src 'self'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com https://*.gstatic.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://auth.buffer.com",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin", // origin only, so Google can match the picker key's website restriction
+  "Strict-Transport-Security": "max-age=31536000",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
 };
 const headers = (extra: Record<string, string> = {}) => new Headers({ ...SECURITY, ...extra });
 const html = (body: string, status = 200) => new Response(body, { status, headers: headers({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }) });
@@ -88,9 +90,18 @@ async function callback(req: Request, env: Env, url: URL): Promise<Response> {
     console.error(err);
     return redirect("/?error=signin", { "Set-Cookie": clear });
   }
-  const existing = await loadSession(req, env);
-  const session: Session = existing ? { ...existing.data, tokens } : { tokens };
-  const { orgs, timezone } = await getStart(new BufferClient(env, session));
+  let existing = await loadSession(req, env);
+  let session: Session = existing ? { ...existing.data, tokens } : { tokens };
+  const { orgs, timezone, accountId } = await getStart(new BufferClient(env, session));
+  // A different Buffer account on this browser gets a new session: the last
+  // person's draft, plan and Google access don't carry over.
+  if (existing && existing.data.accountId && accountId && existing.data.accountId !== accountId) {
+    if (existing.data.google) await revokeGoogle(existing.data.google);
+    await env.SESSIONS.delete(`s:${existing.id}`);
+    existing = null;
+    session = { tokens: session.tokens };
+  }
+  session.accountId = accountId;
   session.orgs = orgs.map(({ id, name }) => ({ id, name }));
   session.timezone = validZone(timezone);
   if (!orgs.some((o) => o.id === session.organizationId)) {
