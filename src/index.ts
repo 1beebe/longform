@@ -13,7 +13,7 @@ import { cookie, createSession, destroySession, loadSession, readCookie, saveSes
 import { RevisionRejected, revise, serviceName, suggest } from "./suggest";
 import { orderSavedDrafts, toSavedDraft, type DraftFallback, type SavedDraft } from "./saved";
 import { addDays, localDate, mondayOf, validZone, zonedIso } from "./time";
-import { appPage, privacyPage } from "./page";
+import { appPage, privacyPage, termsPage } from "./page";
 import { STATIC } from "./static";
 import { sampleDoc } from "./sample";
 
@@ -47,6 +47,7 @@ export default {
       if (req.method === "GET" && file) return new Response(file.body, { headers: headers({ "Content-Type": file.type, "Cache-Control": file.immutable ? "public, max-age=86400" : "no-cache, must-revalidate" }) });
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/app")) return html(appPage(env.APP_NAME || "Longform", !readCookie(req, "sid")));
       if (req.method === "GET" && url.pathname === "/privacy") return html(privacyPage(env.APP_NAME || "Longform"));
+      if (req.method === "GET" && url.pathname === "/terms") return html(termsPage(env.APP_NAME || "Longform"));
       if (req.method === "GET" && url.pathname === "/connect") return connect(env);
       if (req.method === "GET" && url.pathname === "/callback") return callback(req, env, url);
       if (req.method === "GET" && url.pathname === "/google/connect") return googleConnect(req, env);
