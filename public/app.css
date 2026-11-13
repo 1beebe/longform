@@ -189,3 +189,7 @@ button.ev.s:hover{background:var(--tint)}
   .brand .ctx{display:none}
   .posts{grid-template-columns:1fr}
 }
+.ev.p.drag{cursor:grab}
+.ev.p.drag:active{cursor:grabbing}
+#calendar.dragging .day:not(.out){outline:1px dashed var(--control);outline-offset:-1px}
+.day.drop{box-shadow:inset 0 0 0 2px var(--accent);background:var(--tint)}

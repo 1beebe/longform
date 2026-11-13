@@ -273,7 +273,14 @@
   }
 
   function chip(x, b, phone) {
-    if (x.kind === "p") return h("div", { class: "ev p" }, "★ Publish long-form");
+    if (x.kind === "p") {
+      // Drag the publish chip to another day to move the plan (desktop; phones use Pick another day).
+      if (ui.picking || ui.busy) return h("div", { class: "ev p" }, "★ Publish long-form");
+      return h("div", { class: "ev p drag", draggable: "true", title: "Drag to another day to move the plan",
+        ondragstart: (e) => { dragging = true; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "publish"); document.getElementById("calendar").classList.add("dragging"); },
+        ondragend: () => { dragging = false; const c = document.getElementById("calendar"); if (c) { c.classList.remove("dragging"); c.querySelectorAll(".drop").forEach((x) => x.classList.remove("drop")); } } },
+        "★ Publish long-form");
+    }
     if (x.kind === "q") {
       const ch = b.channels.find((c) => c.id === x.q.channelId);
       const svc = ch ? ch.service : "";
@@ -289,6 +296,13 @@
     if (ui.picking) return h("div", { class: cls, title: `${ROLE[c.role]} on ${label(c.service)}` }, ...inner);
     return h("button", { class: `${cls} jump`, type: "button", title: `Go to the ${ROLE[c.role].toLowerCase()} for ${label(c.service)}`, onclick: () => jumpTo(c.slot) }, ...inner);
   }
+
+  let dragging = false;
+  const dropAttrs = (d) => ({
+    ondragover: (e) => { if (!dragging) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; e.currentTarget.classList.add("drop"); },
+    ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove("drop"); },
+    ondrop: (e) => { if (!dragging) return; e.preventDefault(); dragging = false; setPublishDay(d); },
+  });
 
   function jumpTo(slot) {
     const el = document.getElementById(`post${slot}`);
@@ -333,7 +347,7 @@
       const kids = [h("span", { class: "n" }, n), ...shown.slice(0, 4).map((x) => chip(x, b)), shown.length > 4 ? h("div", { class: "ev more" }, `+${shown.length - 4} more`) : null];
       cells.push(p && !past && ui.picking
         ? h("button", { class: `${cls} pickable`, type: "button", "aria-label": `Publish on ${longish(d)}`, onclick: () => setPublishDay(d) }, kids)
-        : h("div", { class: cls }, kids));
+        : h("div", { class: cls, ...(p && !past ? dropAttrs(d) : {}) }, kids));
     }
     const maxWeek = 2;
     return h("div", { class: "card", id: "calendar" },
@@ -350,7 +364,7 @@
           ? h("button", { class: "linkish mv", onclick: () => { ui.picking = false; render(); } }, "Cancel")
           : h("button", { class: "linkish mv", onclick: startPicking }, "Pick another day"))
         : h("p", { class: "hint" }, "Your queue for the next six weeks. Plan the launch to see a suggested publish day."),
-      ui.picking ? h("p", { class: "hint picking", role: "status" }, "Click the day you want to publish on. The posts move with it.") : null,
+      ui.picking ? h("p", { class: "hint picking", role: "status" }, "Click the day you want to publish on. The posts move with it. On a computer you can also drag the ★ to a day.") : null,
       ui.busy === "day" ? h("p", { class: "hint" }, "Moving the plan…") : null,
     );
   }
