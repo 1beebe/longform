@@ -2,7 +2,7 @@ import type { Env } from "./env";
 import type { Doc, Role, Suggestion } from "./session";
 import type { Slot } from "./plan";
 import { DocIndex, LIMITS, LINK, fit } from "./guard";
-import { generate, parseJson } from "./model";
+import { generate, ModelFormatError, parseJson } from "./model";
 
 const SERVICE_NAMES: Record<string, string> = {
   twitter: "X", linkedin: "LinkedIn", threads: "Threads", bluesky: "Bluesky", mastodon: "Mastodon", facebook: "Facebook", instagram: "Instagram", substack: "Substack Notes",
@@ -31,6 +31,8 @@ function docBlock(doc: Doc): string {
   return doc.sections.map((s) => `## Section ${s.index}: ${s.heading}\n${s.text}`).join("\n\n").slice(0, 60_000);
 }
 
+export class RevisionRejected extends Error {}
+
 interface Raw { slot: number; sectionIndex?: number; sourceQuote?: string; text?: string }
 
 function slotLines(slots: Slot[]): string {
@@ -39,7 +41,7 @@ function slotLines(slots: Slot[]): string {
 
 const SHAPE = `[{"slot": 1, "sectionIndex": 2, "sourceQuote": "the exact line from the draft this post is built on", "text": "the post"}]`;
 
-async function ask(env: Env, doc: Doc, slots: Slot[], failures?: Map<number, string>): Promise<Raw[]> {
+async function ask(env: Env, doc: Doc, slots: Slot[], failures?: Map<number, string>, formatRetry = false): Promise<Raw[]> {
   const retry = failures?.size
     ? `\n\nFix the issue listed for each slot. Keep the supporting excerpt exact and write a standalone post.\n${[...failures].map(([n, why]) => `- slot ${n}: ${why}`).join("\n")}`
     : "";
@@ -51,9 +53,10 @@ Write one post for each slot below. Use a different section for each post where 
 
 ${slotLines(slots)}${retry}
 
-Reply with a JSON array like ${SHAPE}.`;
+Reply with a JSON array like ${SHAPE}. Escape double quotes and line breaks inside JSON strings.${formatRetry ? " Your previous reply could not be parsed. Return compact, valid JSON only." : ""}`;
   const out = parseJson<Raw[]>(await generate(env, SYSTEM, message, 3000));
-  return Array.isArray(out) ? out : [];
+  if (!Array.isArray(out)) throw new ModelFormatError("The AI reply did not contain a list of posts");
+  return out.filter((item) => item && typeof item === "object");
 }
 
 function accept(raw: Raw | undefined, slot: Slot, index: DocIndex, doc: Doc): { s?: Suggestion; why?: string } {
@@ -76,7 +79,12 @@ export function fullText(doc: Doc): string {
 // Ask once for every slot; retry the ones that fail the guard once; drop the rest.
 export async function suggest(env: Env, doc: Doc, slots: Slot[]): Promise<{ suggestions: Suggestion[]; dropped: number }> {
   const index = new DocIndex(fullText(doc));
-  const first = await ask(env, doc, slots);
+  let retriedFormat = false;
+  const first = await ask(env, doc, slots).catch((err: unknown) => {
+    if (!(err instanceof ModelFormatError)) throw err;
+    retriedFormat = true;
+    return ask(env, doc, slots, undefined, true);
+  });
   const kept = new Map<number, Suggestion>();
   const failed = new Map<number, string>();
   for (const slot of slots) {
@@ -85,7 +93,7 @@ export async function suggest(env: Env, doc: Doc, slots: Slot[]): Promise<{ sugg
     if (s) kept.set(slot.slot, s);
     else { failed.set(slot.slot, why ?? "invalid post"); console.log(`slot ${slot.slot} failed: ${why}`); }
   }
-  if (failed.size) {
+  if (failed.size && !retriedFormat) {
     const again = await ask(env, doc, slots.filter((s) => failed.has(s.slot)), failed).catch(() => [] as Raw[]);
     for (const slot of slots.filter((s) => failed.has(s.slot))) {
       const { s } = accept(again.find((r) => Number(r.slot) === slot.slot), slot, index, doc);
@@ -112,13 +120,24 @@ ${card.text}
 
 The writer asks: ${instruction}
 
-Apply the writer's request while keeping the post self-contained and grounded in the draft. Reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
+Apply the writer's request while keeping the post self-contained and grounded in the draft. Preserve the post's main point unless the writer asks for a different point supported by the draft. If the requested change requires an unsupported claim, experience, or opinion, return {"unsupported": true} and no revised text. Do not substitute another topic. Otherwise reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
   let retry = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = parseJson<Raw>(await generate(env, SYSTEM, message + retry, 1200));
+    const output = await generate(env, SYSTEM, message + retry, 1200);
+    let raw: (Raw & { unsupported?: boolean }) | null;
+    try {
+      raw = parseJson<Raw & { unsupported?: boolean }>(output);
+    } catch (err) {
+      if (!(err instanceof ModelFormatError)) throw err;
+      retry = "\n\nReturn valid JSON only. Escape quotes and line breaks inside JSON strings.";
+      continue;
+    }
+    if (raw?.unsupported === true) {
+      throw new RevisionRejected("That change would add something the article doesn’t support. Your draft was kept.");
+    }
     const { s, why } = accept({ ...raw, slot: card.slot }, card, index, doc);
     if (s) return { ...card, text: s.text, sourceQuote: s.sourceQuote, sectionIndex: s.sectionIndex, included: card.included, bufferId: undefined, error: undefined };
     retry = `\n\nFix the issue with the last attempt: ${why}. Keep the supporting excerpt exact and write a standalone post.`;
   }
-  throw new Error("I couldn’t revise this post. Your current draft is still available to edit.");
+  throw new RevisionRejected("I couldn’t revise this post. Your draft was kept.");
 }

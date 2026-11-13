@@ -10,7 +10,7 @@ import { LIMITS } from "./guard";
 import { ModelBusy, ModelError, hasModel } from "./model";
 import { busyByDay, pickPublishDay, place, placeholderChannel, reasonFor, type Slot } from "./plan";
 import { cookie, createSession, destroySession, loadSession, readCookie, saveSession, type Session, type Suggestion } from "./session";
-import { revise, serviceName, suggest } from "./suggest";
+import { RevisionRejected, revise, serviceName, suggest } from "./suggest";
 import { addDays, localDate, mondayOf, validZone, zonedIso } from "./time";
 import { appPage, privacyPage } from "./page";
 import { STATIC } from "./static";
@@ -323,10 +323,10 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
         if (!card) throw new UserError("That post isn't in the plan anymore.");
         const instruction = typeof b.instruction === "string" ? b.instruction.trim().slice(0, 300) : "";
         if (instruction.length < 3) throw new UserError("Say what you'd like changed.");
-        if (typeof b.text === "string" && b.text.trim()) card.text = b.text.slice(0, 3000);
+        const current = typeof b.text === "string" && b.text.trim() ? { ...card, text: b.text.slice(0, 3000) } : card;
         reserveModel(s, 1);
         await save();
-        const next = await revise(env, s.doc, card, instruction);
+        const next = await revise(env, s.doc, current, instruction);
         Object.assign(card, next);
         await save();
         return json({ suggestion: card });
@@ -417,7 +417,7 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
     if (err instanceof ModelError) { console.error(err); return json({ error: "The AI step didn't answer. Try again in a minute." }, 502); }
     if (err instanceof NeedsReconnect) return json({ error: "Buffer signed you out. Connect again.", reconnect: true }, 401);
     if (err instanceof RateLimited) return json({ error: `Buffer asked us to wait ${err.retryAfterSeconds} seconds.` }, 429);
-    if (err instanceof Error && /^That change would move/.test(err.message)) return json({ error: err.message }, 422);
+    if (err instanceof RevisionRejected) return json({ error: err.message }, 422);
     throw err;
   }
 }

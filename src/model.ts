@@ -2,6 +2,7 @@ import type { Env } from "./env";
 
 export class ModelError extends Error {}
 export class ModelBusy extends Error {}
+export class ModelFormatError extends ModelError {}
 
 export const hasModel = (env: Env) => Boolean(env.MINDSTUDIO_API_KEY || env.ANTHROPIC_API_KEY);
 
@@ -70,9 +71,13 @@ export async function generate(env: Env, system: string, message: string, maxTok
 export function parseJson<T>(text: string): T {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1] ?? text;
   const start = fenced.search(/[[{]/);
-  if (start < 0) throw new ModelError("The AI reply had no JSON");
+  if (start < 0) throw new ModelFormatError("The AI reply had no JSON");
   const open = fenced[start];
   const close = open === "[" ? "]" : "}";
   const end = fenced.lastIndexOf(close);
-  return JSON.parse(fenced.slice(start, end + 1)) as T;
+  try {
+    return JSON.parse(fenced.slice(start, end + 1)) as T;
+  } catch {
+    throw new ModelFormatError("The AI reply contained invalid JSON");
+  }
 }
