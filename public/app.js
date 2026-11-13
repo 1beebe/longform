@@ -390,7 +390,7 @@
   function postsSection(b, p) {
     const list = cards();
     const ph = placeholder();
-    const intro = "Each one adapts an idea from your draft and placed around the publish day. Edit anything and untick what you don't want. They save to Buffer as drafts on those dates, so nothing posts until you approve it there.";
+    const intro = "Each post adapts an idea from your draft and appears on the calendar around your publish day. Edit anything and untick what you don't want. They save to Buffer as drafts on those dates, so nothing posts until you approve it there.";
     const items = [];
     let placed = false;
     for (const c of list) {
