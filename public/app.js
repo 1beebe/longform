@@ -414,7 +414,7 @@
           h("span", null, h("b", null, p ? channels.size : b.channels.filter((c) => c.selected).length), "channels"))),
       h("div", { class: "card scan" },
         h("h2", null, scanning ? "Scanning your draft…" : p ? "Scanned your draft" : "Ready to scan"),
-        h("p", null, "The AI turns ideas from your draft into standalone posts. Each suggestion shows its source excerpt so you can check where it came from."),
+        h("p", null, "The AI summarizes and rephrases your draft into short posts, then a second check throws out anything your draft doesn't say. Each post shows the line it came from."),
         h("div", { class: `bar${scanning ? " run" : ""}` }, h("i", { style: p || scanning ? null : "width:0" })),
         !me.aiReady ? h("p", null, "The AI step isn't switched on for this server yet.")
           : !scanning && h("button", { class: "btn", onclick: () => { if (!p || confirm("Plan again? Posts you haven't saved will be replaced.")) runSuggest(); } }, p ? "Plan again" : "Find a day and suggest posts")));
@@ -434,7 +434,7 @@
     if (!placed) items.push(placeholderCard(b, p, ph));
     return h("section", null,
       h("div", { class: "sug-h" }, h("h2", null, "Posts to go with it"), h("p", null, intro),
-        me.dropped ? h("p", { class: "hint" }, `${me.dropped} suggestion${me.dropped === 1 ? "" : "s"} ${me.dropped === 1 ? "was" : "were"} skipped after a second attempt.`) : null),
+        me.dropped ? h("p", { class: "hint" }, `${me.dropped} suggestion${me.dropped === 1 ? "" : "s"} ${me.dropped === 1 ? "was" : "were"} left out because ${me.dropped === 1 ? "it" : "they"} said something your draft doesn't.`) : null),
       h("div", { class: "posts" }, items));
   }
 

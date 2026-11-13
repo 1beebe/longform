@@ -25,6 +25,27 @@ test("guard: accepts a standalone adaptation with an excerpt from the draft", ()
   assert.equal(ix.passes(`An essay’s launch is only the beginning. “${quote}”`, quote).ok, true);
 });
 
+test("guard: rejects posts that add to the draft", () => {
+  const ix = new DocIndex(DOC);
+  const q = "It is the starting gun.";
+  // Numbers the draft doesn't have.
+  assert.equal(ix.passes("Launch is the starting gun. 3 out of 4 essays die in the first week.", q).ok, false);
+  // A question the draft never asks.
+  assert.equal(ix.passes("Is your launch the finish line, or the starting gun?", q).ok, false);
+  // A bolted-on takeaway.
+  assert.equal(ix.passes("The launch is the starting gun. The lesson: keep going after it goes out.", q).ok, false);
+  // New ideas dressed up around the quote.
+  assert.equal(ix.passes("Launching is just the beginning, friends! Five hot tips to boost engagement and grow your audience.", q).ok, false);
+  // Rephrasing what the draft says is fine.
+  assert.equal(ix.passes("Most teams think the launch is the finish line. The real work comes the week after.", q).ok, true);
+});
+
+test("guard: first person only when the draft speaks in it", () => {
+  const ix = new DocIndex("Teams treat the launch as the finish line. It is the starting gun.");
+  assert.equal(ix.passes("I used to think the launch was the finish line. It is the starting gun.", "It is the starting gun.").ok, false);
+  assert.equal(ix.passes("Teams treat the launch like the finish line. It is really the starting gun.", "It is the starting gun.").ok, true);
+});
+
 test("fit trims whole sentences and keeps [link]", () => {
   const long = "One sentence here. ".repeat(20) + "\n\n[link]";
   const out = fit(long, "twitter")!;

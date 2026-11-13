@@ -17,13 +17,13 @@ const ROLE_BRIEF: Record<Role, string> = {
   followup: "goes out about a week later. Revisit a point the writer actually makes. Use a closing thought or question only if it appears in the draft.",
 };
 
-const SYSTEM = `You're an editor adapting a writer's long-form piece into short social posts. Write each post for someone who hasn't read the piece. Give it a clear opening, name what it's about, and develop one point the reader can understand on its own.
+const SYSTEM = `You're an editor turning a writer's long-form piece into short social posts. Your only tools are summarizing and rephrasing what the piece already says. Write each post for someone who hasn't read the piece: name what it's about and make one point they can follow on its own.
 
-Keep the writer's voice and meaning. Rephrase, condense, or combine details stated in the draft to give the reader context. Use sourceQuote for the exact excerpt that supports the post's main point. In text, turn that point into a complete post, with framing around any quote you include.
+Everything in a post must already be in the draft: every claim, opinion, feeling, experience, example, number and name. Don't add a takeaway, lesson, moral, prediction, question or call to action the draft doesn't state. Don't infer what the writer thinks or felt, assign motives, or say they changed their mind or keep thinking about something. Use "I" only where the draft does, and only for things the draft says the writer did, thought or felt. Keep their degree of certainty. Keep emoji and hashtags only if the draft has them.
 
-Treat the draft as the authority on what the writer did, thought, felt, or concluded. Use first person only for experiences and views the writer explicitly expresses. Preserve their degree of certainty. Don't infer a change of mind, assign motives, add a takeaway, or pose a new question on the writer's behalf. For example, if the writer describes an event with no prizes, you can explain how that event works. You can't turn that detail into their opinion about prize culture or claim they keep thinking about it.
+Use sourceQuote for the exact excerpt that supports the post's main point. In text, rephrase or condense that point, with a sentence of context from the draft if it needs one. If a slot needs more than the draft gives you, keep the point narrow and the post short, or leave the slot out.
 
-Before returning each post, check that every claim and personal interpretation is supported by the draft. Remove any unsupported sentence. Keep calls to action, emoji, and hashtags only if the draft includes them. If the draft is thin, use a narrower point and keep the post short. Omit a slot if you can't make it stand on its own from the material available.
+Your posts are checked afterwards against the draft, word by word and claim by claim. Anything the draft doesn't support gets the post thrown out.
 
 Reply with JSON only.`;
 
@@ -32,6 +32,37 @@ function docBlock(doc: Doc): string {
 }
 
 export class RevisionRejected extends Error {}
+
+const CHECKER = `You check social posts against the long-form draft they were made from. A post may only summarize or rephrase the draft. Flag a post if any part of it states something the draft doesn't: a claim, fact, number, name, example, opinion, feeling, experience, motive, lesson, takeaway, prediction, question or call to action. Rewording, shortening and combining things the draft says is fine. Be strict: if you can't point to where the draft says it, flag it.
+
+Reply with JSON only.`;
+
+// A second, independent read: which posts say anything the draft doesn't?
+// Returns slot -> reason. If the check itself fails, the word-level guard stands alone.
+async function verify(env: Env, doc: Doc, posts: { slot: number; text: string }[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (!posts.length) return out;
+  const message = `The draft, titled "${doc.title}":
+
+${docBlock(doc)}
+
+The posts:
+${posts.map((p) => `- slot ${p.slot}: ${JSON.stringify(p.text.split(LINK).join("").trim())}`).join("\n")}
+
+For every post, reply with a JSON array like [{"slot": 1, "supported": false, "unsupported": "the exact words in the post the draft doesn't support"}]. Use "supported": true and "unsupported": "" when the whole post is backed by the draft.`;
+  try {
+    const rows = parseJson<{ slot: number; supported?: boolean; unsupported?: string }[]>(await generate(env, CHECKER, message, 1500));
+    if (!Array.isArray(rows)) throw new ModelFormatError("checker reply was not a list");
+    for (const p of posts) {
+      const r = rows.find((x) => x && Number(x.slot) === p.slot);
+      if (!r) out.set(p.slot, "the check didn't cover it");
+      else if (r.supported !== true) out.set(p.slot, `the draft doesn't support ${r.unsupported ? JSON.stringify(String(r.unsupported).slice(0, 200)) : "part of it"}`);
+    }
+  } catch (err) {
+    console.error("support check failed", err);
+  }
+  return out;
+}
 
 interface Raw { slot: number; sectionIndex?: number; sourceQuote?: string; text?: string }
 
@@ -43,7 +74,7 @@ const SHAPE = `[{"slot": 1, "sectionIndex": 2, "sourceQuote": "the exact line fr
 
 async function ask(env: Env, doc: Doc, slots: Slot[], failures?: Map<number, string>, formatRetry = false): Promise<Raw[]> {
   const retry = failures?.size
-    ? `\n\nFix the issue listed for each slot. Keep the supporting excerpt exact and write a standalone post.\n${[...failures].map(([n, why]) => `- slot ${n}: ${why}`).join("\n")}`
+    ? `\n\nFix the issue listed for each slot. Only summarize or rephrase what the draft says. Keep the supporting excerpt exact.\n${[...failures].map(([n, why]) => `- slot ${n}: ${why}`).join("\n")}`
     : "";
   const message = `The draft, titled "${doc.title}":
 
@@ -87,18 +118,25 @@ export async function suggest(env: Env, doc: Doc, slots: Slot[]): Promise<{ sugg
   });
   const kept = new Map<number, Suggestion>();
   const failed = new Map<number, string>();
-  for (const slot of slots) {
-    const raw = first.find((r) => Number(r.slot) === slot.slot);
-    const { s, why } = accept(raw, slot, index, doc);
-    if (s) kept.set(slot.slot, s);
-    else { failed.set(slot.slot, why ?? "invalid post"); console.log(`slot ${slot.slot} failed: ${why}`); }
-  }
-  if (failed.size && !retriedFormat) {
-    const again = await ask(env, doc, slots.filter((s) => failed.has(s.slot)), failed).catch(() => [] as Raw[]);
-    for (const slot of slots.filter((s) => failed.has(s.slot))) {
-      const { s } = accept(again.find((r) => Number(r.slot) === slot.slot), slot, index, doc);
-      if (s) kept.set(slot.slot, s);
+  const take = async (raws: Raw[], forSlots: Slot[]) => {
+    const passed: Suggestion[] = [];
+    for (const slot of forSlots) {
+      const { s, why } = accept(raws.find((r) => Number(r.slot) === slot.slot), slot, index, doc);
+      if (s) passed.push(s);
+      else { failed.set(slot.slot, why ?? "invalid post"); console.log(`slot ${slot.slot} failed: ${why}`); }
     }
+    const flagged = await verify(env, doc, passed);
+    for (const s of passed) {
+      const why = flagged.get(s.slot);
+      if (why) { failed.set(s.slot, why); console.log(`slot ${s.slot} failed check: ${why}`); }
+      else { kept.set(s.slot, s); failed.delete(s.slot); }
+    }
+  };
+  await take(first, slots);
+  if (failed.size && !retriedFormat) {
+    const retrySlots = slots.filter((s) => failed.has(s.slot));
+    const again = await ask(env, doc, retrySlots, new Map(failed)).catch(() => [] as Raw[]);
+    await take(again, retrySlots);
   }
   const suggestions = slots.map((s) => kept.get(s.slot)).filter((s): s is Suggestion => Boolean(s));
   return { suggestions, dropped: slots.length - suggestions.length };
@@ -120,7 +158,7 @@ ${card.text}
 
 The writer asks: ${instruction}
 
-Apply the writer's request while keeping the post self-contained and grounded in the draft. Preserve the post's main point unless the writer asks for a different point supported by the draft. If the requested change requires an unsupported claim, experience, or opinion, return {"unsupported": true} and no revised text. Do not substitute another topic. Otherwise reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
+Apply the writer's request by summarizing or rephrasing what the draft says, keeping the post self-contained. Preserve the post's main point unless the writer asks for a different point supported by the draft. If the requested change needs anything the draft doesn't say (a claim, experience, opinion, takeaway or question), return {"unsupported": true} and no revised text. Do not substitute another topic. Otherwise reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
   let retry = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const output = await generate(env, SYSTEM, message + retry, 1200);
@@ -135,9 +173,10 @@ Apply the writer's request while keeping the post self-contained and grounded in
     if (raw?.unsupported === true) {
       throw new RevisionRejected("That change would add something the article doesn’t support. Your draft was kept.");
     }
-    const { s, why } = accept({ ...raw, slot: card.slot }, card, index, doc);
-    if (s) return { ...card, text: s.text, sourceQuote: s.sourceQuote, sectionIndex: s.sectionIndex, included: card.included, bufferId: undefined, error: undefined };
-    retry = `\n\nFix the issue with the last attempt: ${why}. Keep the supporting excerpt exact and write a standalone post.`;
+    const { s, why: lexical } = accept({ ...raw, slot: card.slot }, card, index, doc);
+    const why = s ? (await verify(env, doc, [{ slot: card.slot, text: s.text }])).get(card.slot) : lexical;
+    if (s && !why) return { ...card, text: s.text, sourceQuote: s.sourceQuote, sectionIndex: s.sectionIndex, included: card.included, bufferId: undefined, error: undefined };
+    retry = `\n\nFix the issue with the last attempt: ${why}. Keep the supporting excerpt exact and only summarize or rephrase what the draft says.`;
   }
   throw new RevisionRejected("I couldn’t revise this post. Your draft was kept.");
 }
