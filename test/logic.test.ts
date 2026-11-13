@@ -125,3 +125,13 @@ test("saved drafts deleted in Buffer come back as unsaved", async () => {
   assert.equal(forgetDeleted(q, [], "2026-11-13", "2026-11-17", true), 2); // gone + kept in range; ph past range end
   assert.equal(q.placeholder.bufferId, "ph");
 });
+
+test("sample piece: Walking loads as a sectioned doc", async () => {
+  const { sampleDoc } = await import("../src/sample");
+  const d = sampleDoc();
+  assert.equal(d.sample, true);
+  assert.deepEqual(d.sections.map((s) => s.heading), ["Sauntering", "Four hours a day", "Westward", "In wildness", "Useful ignorance", "We hug the earth"]);
+  assert.ok(d.words > 11000 && d.words < 13000, `words ${d.words}`);
+  assert.ok(d.sections[0].text.startsWith("I wish to speak a word for Nature"));
+  assert.ok(d.sections[3].text.includes("in Wildness is the preservation of the World"));
+});

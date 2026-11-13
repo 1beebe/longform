@@ -27,6 +27,7 @@ export interface Doc {
   loadedAt: number;
   fileId?: string; // picked from Google Drive
   modifiedTime?: string; // ISO, from Drive
+  sample?: boolean; // the bundled sample piece
 }
 
 export type Role = "teaser" | "launch" | "pullquote" | "keyidea" | "followup";

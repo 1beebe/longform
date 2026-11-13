@@ -131,7 +131,7 @@ function landing(name: string, show: boolean): string {
 <section class="l-close" aria-labelledby="l-close-h">
   <div class="l-wrap">
     <h2 id="l-close-h">Plan the launch of your next piece</h2>
-    <p>Sign in with Buffer, then pick the draft.</p>
+    <p>Sign in with Buffer, then pick your draft. No draft handy? You can try it on a sample piece.</p>
     <a class="btn" href="/connect">Connect Buffer</a>
   </div>
 </section>

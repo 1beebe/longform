@@ -14,6 +14,7 @@ import { RevisionRejected, revise, serviceName, suggest } from "./suggest";
 import { addDays, localDate, mondayOf, validZone, zonedIso } from "./time";
 import { appPage, privacyPage } from "./page";
 import { STATIC } from "./static";
+import { sampleDoc } from "./sample";
 
 const RANGE_DAYS = 42; // the calendar spans six weeks from this Monday
 const MODEL_CALLS_PER_HOUR = 20;
@@ -182,7 +183,7 @@ function view(s: Session, b?: Board) {
     organizationId: s.organizationId,
     aiReady: undefined as boolean | undefined,
     google: { ready: false, connected: Boolean(s.google) },
-    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, picked: Boolean(s.doc.fileId), fileId: s.doc.fileId, modifiedTime: s.doc.modifiedTime, sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
+    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, sample: Boolean(s.doc.sample), picked: Boolean(s.doc.fileId), fileId: s.doc.fileId, modifiedTime: s.doc.modifiedTime, sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
     plan: s.plan ?? null,
     board: b
       ? {
@@ -250,7 +251,8 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
       if (req.method === "POST" && path === "/api/doc") {
         const b = await body(req, 200_000);
         let doc;
-        if (typeof b.fileId === "string" && b.fileId) {
+        if (b.sample === true) doc = sampleDoc();
+        else if (typeof b.fileId === "string" && b.fileId) {
           if (!s.google) return json({ error: "Connect Google first.", google: true }, 401);
           const { tokens, changed } = await googleToken(env, s.google);
           if (changed) { s.google = tokens; await save(); }

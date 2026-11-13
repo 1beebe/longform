@@ -218,6 +218,10 @@
             h("div", { class: "row" }, h("button", { class: "btn dark", type: "submit", disabled: ui.busy === "doc" }, "Use this text")))),
         h("ul", { class: "reassure" }, h("li", null, "Read only"), h("li", null, "Only the doc you pick"), h("li", null, "Nothing posts on its own")),
       ),
+      h("section", { class: "card pick sample" },
+        h("h2", null, "No draft handy? Try a sample piece"),
+        h("p", null, "Run the whole flow on Henry David Thoreau's essay \u201cWalking\u201d (1862, public domain, about 12,000 words). The plan uses your real Buffer queue, and anything you save lands in Buffer as a draft you can delete."),
+        h("div", { class: "row" }, h("button", { class: "btn ghost", type: "button", disabled: ui.busy === "doc", onclick: () => useDoc({ sample: true }) }, ui.busy === "doc" ? "Loading…" : "Use the sample piece"))),
     );
   }
 
@@ -248,8 +252,8 @@
       h("div", { class: "ic g" }, "G"),
       h("div", { class: "body" },
         h("h3", null, d.title),
-        h("p", null, [d.url ? "Google Doc" : "Pasted draft", d.modifiedTime ? ago(d.modifiedTime) : "", `${d.words.toLocaleString()} words`].filter(Boolean).join(" · ")),
-        h("div", { class: "meta" }, d.url && h("span", { class: "chip ok" }, d.picked ? "Connected to Google" : "Read from your link"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
+        h("p", null, [d.sample ? "Sample piece, public domain" : d.url ? "Google Doc" : "Pasted draft", d.modifiedTime ? ago(d.modifiedTime) : "", `${d.words.toLocaleString()} words`].filter(Boolean).join(" · ")),
+        h("div", { class: "meta" }, d.url && !d.sample && h("span", { class: "chip ok" }, d.picked ? "Connected to Google" : "Read from your link"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
       h("div", { class: "act" },
         d.picked && me.google && me.google.connected
           ? h("button", { class: "linkish", onclick: () => { if (!me.plan || confirm("Pick another doc? This clears the current plan.")) openPicker(); } }, ui.busy === "doc" ? "Reading…" : "Change doc")
