@@ -5,6 +5,7 @@ import {
   type Channel, type QueueItem,
 } from "./buffer";
 import { DocError, fetchDoc, parsePasted } from "./doc";
+import { GoogleReconnect, googleAuthUrl, googleExchange, googleReady, googleToken, readPickedDoc, revokeGoogle } from "./google";
 import { LIMITS } from "./guard";
 import { ModelBusy, ModelError, hasModel } from "./model";
 import { busyByDay, pickPublishDay, place, placeholderChannel, reasonFor, type Slot } from "./plan";
@@ -25,7 +26,7 @@ class UserError extends Error {
 
 const SECURITY: Record<string, string> = {
   "Content-Security-Policy":
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://auth.buffer.com",
+    "default-src 'self'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com https://*.gstatic.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://auth.buffer.com",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "same-origin",
 };
@@ -44,8 +45,12 @@ export default {
       if (req.method === "GET" && url.pathname === "/privacy") return html(privacyPage(env.APP_NAME || "Longform"));
       if (req.method === "GET" && url.pathname === "/connect") return connect(env);
       if (req.method === "GET" && url.pathname === "/callback") return callback(req, env, url);
+      if (req.method === "GET" && url.pathname === "/google/connect") return googleConnect(req, env);
+      if (req.method === "GET" && url.pathname === "/google/callback") return googleCallback(req, env, url);
       if (req.method === "POST" && url.pathname === "/logout") {
         if (req.headers.get("Origin") !== new URL(env.APP_URL).origin) return json({ error: "Requests have to come from the app." }, 403);
+        const loaded = await loadSession(req, env);
+        if (loaded?.data.google) await revokeGoogle(loaded.data.google);
         return redirect("/", { "Set-Cookie": await destroySession(req, env) });
       }
       if (url.pathname.startsWith("/api/")) return await api(req, env, url.pathname);
@@ -94,6 +99,35 @@ async function callback(req: Request, env: Env, url: URL): Promise<Response> {
   else h.append("Set-Cookie", await createSession(env, session));
   h.append("Set-Cookie", clear);
   return new Response(null, { status: 302, headers: h });
+}
+
+async function googleConnect(req: Request, env: Env): Promise<Response> {
+  if (!googleReady(env)) return redirect("/?error=google-off");
+  if (!(await loadSession(req, env))) return redirect("/");
+  const { verifier, challenge } = await pkcePair();
+  const state = randomToken(16);
+  await env.SESSIONS.put(`gauth:${state}`, verifier, { expirationTtl: 600 });
+  return redirect(googleAuthUrl(env, state, challenge), { "Set-Cookie": cookie("g_state", state, 600) });
+}
+
+async function googleCallback(req: Request, env: Env, url: URL): Promise<Response> {
+  const state = url.searchParams.get("state") ?? "";
+  const clear = cookie("g_state", "", 0);
+  if (!state || state !== readCookie(req, "g_state")) return redirect("/?error=state", { "Set-Cookie": clear });
+  const verifier = await env.SESSIONS.get(`gauth:${state}`);
+  await env.SESSIONS.delete(`gauth:${state}`);
+  if (url.searchParams.get("error")) return redirect("/?error=google-denied", { "Set-Cookie": clear });
+  const code = url.searchParams.get("code");
+  const loaded = await loadSession(req, env);
+  if (!code || !verifier || !loaded) return redirect("/?error=expired", { "Set-Cookie": clear });
+  try {
+    loaded.data.google = await googleExchange(env, code, verifier);
+  } catch (err) {
+    console.error(err);
+    return redirect(err instanceof DocError ? "/?error=google-scope" : "/?error=google", { "Set-Cookie": clear });
+  }
+  await saveSession(env, loaded.id, loaded.data);
+  return redirect("/?pick=1", { "Set-Cookie": clear });
 }
 
 async function body(req: Request, max = 8_000): Promise<Record<string, unknown>> {
@@ -145,7 +179,8 @@ function view(s: Session, b?: Board) {
     orgs: s.orgs ?? [],
     organizationId: s.organizationId,
     aiReady: undefined as boolean | undefined,
-    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
+    google: { ready: false, connected: Boolean(s.google) },
+    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, picked: Boolean(s.doc.fileId), fileId: s.doc.fileId, modifiedTime: s.doc.modifiedTime, sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
     plan: s.plan ?? null,
     board: b
       ? {
@@ -179,7 +214,8 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
     try {
       if (path === "/api/me") {
         const b = s.doc ? await board(client, s) : undefined;
-        return json({ ...view(s, b), aiReady: hasModel(env) });
+        const v = view(s, b);
+        return json({ ...v, aiReady: hasModel(env), google: { ...v.google, ready: googleReady(env) } });
       }
 
       if (req.method === "POST" && path === "/api/org") {
@@ -191,10 +227,32 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
         return json({ ok: true });
       }
 
+      // The picker runs in the browser and needs a short-lived token. drive.file
+      // scope: it can only reach files this person picks for this app.
+      if (req.method === "POST" && path === "/api/google/token") {
+        if (!googleReady(env)) throw new UserError("Google isn't set up on this server yet.", 503);
+        if (!s.google) return json({ error: "Connect Google first.", google: true }, 401);
+        const { tokens, changed } = await googleToken(env, s.google);
+        if (changed) { s.google = tokens; await save(); }
+        return json({ accessToken: tokens.accessToken, pickerKey: env.GOOGLE_PICKER_KEY, appId: env.GOOGLE_APP_ID, clientId: env.GOOGLE_CLIENT_ID });
+      }
+
+      if (req.method === "POST" && path === "/api/google/disconnect") {
+        if (s.google) await revokeGoogle(s.google);
+        s.google = undefined;
+        await save();
+        return json({ ok: true });
+      }
+
       if (req.method === "POST" && path === "/api/doc") {
         const b = await body(req, 200_000);
         let doc;
-        if (typeof b.url === "string" && b.url.trim()) doc = await fetchDoc(b.url);
+        if (typeof b.fileId === "string" && b.fileId) {
+          if (!s.google) return json({ error: "Connect Google first.", google: true }, 401);
+          const { tokens, changed } = await googleToken(env, s.google);
+          if (changed) { s.google = tokens; await save(); }
+          doc = await readPickedDoc(tokens.accessToken, b.fileId);
+        } else if (typeof b.url === "string" && b.url.trim()) doc = await fetchDoc(b.url);
         else if (typeof b.text === "string" && b.text.trim()) doc = parsePasted(b.text.slice(0, 150_000), typeof b.title === "string" ? b.title.slice(0, 200) : undefined);
         else throw new UserError("Paste a Google Doc link first.");
         s.doc = doc;
@@ -350,6 +408,11 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
   } catch (err) {
     if (err instanceof UserError) return json({ error: err.message }, err.status);
     if (err instanceof DocError) return json({ error: err.message }, 400);
+    if (err instanceof GoogleReconnect) {
+      s.google = undefined;
+      await save();
+      return json({ error: err.message, google: true }, 401);
+    }
     if (err instanceof ModelBusy) return json({ error: err.message }, 429);
     if (err instanceof ModelError) { console.error(err); return json({ error: "The AI step didn't answer. Try again in a minute." }, 502); }
     if (err instanceof NeedsReconnect) return json({ error: "Buffer signed you out. Connect again.", reconnect: true }, 401);

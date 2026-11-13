@@ -7,10 +7,17 @@ compatibility_date = "2026-10-01"
 #   BUFFER_CLIENT_SECRET  the Buffer app's client secret
 #   TOKEN_KEY             32 random bytes, base64 (openssl rand -base64 32)
 #   MINDSTUDIO_API_KEY    or ANTHROPIC_API_KEY, for the suggestion step
+#   GOOGLE_CLIENT_SECRET  the Google OAuth client secret
 [vars]
 APP_NAME = "Longform"
 APP_URL = "https://longform.lbeebe.com"
 BUFFER_CLIENT_ID = "nFe0ZKJq2xTJd2BuizulbqRkuQ2zZG-i7_ijnrace06"
+# Google sign-in and file picker (drive.file). Fill all three, plus the
+# GOOGLE_CLIENT_SECRET secret, to turn it on; without them the app falls back
+# to share links. The picker key is a browser key: restrict it to this site.
+# GOOGLE_CLIENT_ID = ""
+# GOOGLE_PICKER_KEY = ""
+# GOOGLE_APP_ID = ""
 
 # longform-sessions
 [[kv_namespaces]]

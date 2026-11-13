@@ -7,6 +7,12 @@ export interface Tokens {
   expiresAt: number;
 }
 
+export interface GoogleTokens {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+}
+
 export interface Section {
   index: number; // 1-based, as the outline shows it
   heading: string;
@@ -19,6 +25,8 @@ export interface Doc {
   words: number;
   sections: Section[];
   loadedAt: number;
+  fileId?: string; // picked from Google Drive
+  modifiedTime?: string; // ISO, from Drive
 }
 
 export type Role = "teaser" | "launch" | "pullquote" | "keyidea" | "followup";
@@ -55,6 +63,7 @@ export interface Session {
   channelIds?: string[]; // channels they plan for; empty = every usable one
   doc?: Doc;
   plan?: Plan;
+  google?: GoogleTokens; // drive.file only: reads the docs they pick
   modelCalls?: number[]; // when this person last called the model, for an hourly cap
 }
 

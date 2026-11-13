@@ -6,6 +6,12 @@ export interface Env {
   BUFFER_CLIENT_SECRET: string;
   // 32 random bytes, base64. Encrypts Buffer tokens and the draft at rest in KV.
   TOKEN_KEY: string;
+  // Google sign-in and file picker. All four turn it on; without them the
+  // app reads a doc from an "anyone with the link" share link instead.
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string; // secret
+  GOOGLE_PICKER_KEY?: string; // browser API key, restricted to this site and the Picker API
+  GOOGLE_APP_ID?: string; // the Cloud project number
   // One of these turns on the suggestion step. MindStudio is tried first.
   MINDSTUDIO_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
