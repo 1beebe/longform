@@ -594,10 +594,34 @@
   }
 
   async function load() {
-    try { me = await call("/api/me"); }
+    try {
+      me = await call("/api/me");
+      if (me.forgotten) ui.notice = forgotNote(me.forgotten);
+    }
     catch (e) { if (!me) me = { signedIn: false }; ui.error = e.message; }
     focusWeek();
     render();
+  }
+
+  const forgotNote = (n) => `${n === 1 ? "One draft was" : `${n} drafts were`} deleted in Buffer, so ${n === 1 ? "it's" : "they're"} unsaved and ticked again here.`;
+
+  // Coming back from Buffer: check again whether any saved draft was deleted there.
+  let hiddenAt = 0;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    const anySaved = me && me.plan && (me.plan.placeholder.bufferId || me.plan.suggestions.some((s) => s.bufferId));
+    if (anySaved && !ui.busy && Date.now() - hiddenAt > 15000) refresh();
+  });
+  async function refresh() {
+    try {
+      const next = await call("/api/me");
+      if (!next.forgotten) return;
+      const keepWeek = ui.week;
+      me = next;
+      ui.week = keepWeek;
+      ui.notice = forgotNote(next.forgotten);
+      render();
+    } catch { /* keep what's on screen */ }
   }
 
   const q = new URLSearchParams(location.search);

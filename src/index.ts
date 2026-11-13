@@ -8,7 +8,7 @@ import { DocError, fetchDoc, parsePasted } from "./doc";
 import { GoogleReconnect, googleAuthUrl, googleExchange, googleReady, googleToken, readPickedDoc, revokeGoogle } from "./google";
 import { LIMITS } from "./guard";
 import { ModelBusy, ModelError, hasModel } from "./model";
-import { busyByDay, pickPublishDay, place, placeholderChannel, reasonFor, type Slot } from "./plan";
+import { busyByDay, forgetDeleted, pickPublishDay, place, placeholderChannel, reasonFor, type Slot } from "./plan";
 import { cookie, createSession, destroySession, loadSession, readCookie, saveSession, type Session, type Suggestion } from "./session";
 import { RevisionRejected, revise, serviceName, suggest } from "./suggest";
 import { addDays, localDate, mondayOf, validZone, zonedIso } from "./time";
@@ -158,6 +158,7 @@ interface Board {
   allChannels: Channel[];
   skipped: Channel[];
   queue: QueueItem[];
+  forgotten: number; // saved drafts found deleted in Buffer, now unsaved
 }
 
 async function board(client: BufferClient, s: Session): Promise<Board> {
@@ -168,8 +169,9 @@ async function board(client: BufferClient, s: Session): Promise<Board> {
   const rangeEnd = addDays(rangeStart, RANGE_DAYS - 1);
   const { usable, skipped } = await getChannels(client, s.organizationId);
   const picked = s.channelIds?.length ? usable.filter((c) => s.channelIds!.includes(c.id)) : usable;
-  const queue = await getQueue(client, s.organizationId, zonedIso(rangeStart, "00:00", tz), zonedIso(rangeEnd, "23:59", tz));
-  return { today, rangeStart, rangeEnd, timezone: tz, channels: picked.length ? picked : usable, allChannels: usable, skipped, queue };
+  const { items: queue, complete } = await getQueue(client, s.organizationId, zonedIso(rangeStart, "00:00", tz), zonedIso(rangeEnd, "23:59", tz));
+  const forgotten = s.plan ? forgetDeleted(s.plan, queue, today, rangeEnd, complete) : 0;
+  return { today, rangeStart, rangeEnd, timezone: tz, channels: picked.length ? picked : usable, allChannels: usable, skipped, queue, forgotten };
 }
 
 function view(s: Session, b?: Board) {
@@ -214,8 +216,9 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
     try {
       if (path === "/api/me") {
         const b = s.doc ? await board(client, s) : undefined;
+        if (b?.forgotten) await save();
         const v = view(s, b);
-        return json({ ...v, aiReady: hasModel(env), google: { ...v.google, ready: googleReady(env) } });
+        return json({ ...v, aiReady: hasModel(env), google: { ...v.google, ready: googleReady(env) }, forgotten: b?.forgotten ?? 0 });
       }
 
       if (req.method === "POST" && path === "/api/org") {

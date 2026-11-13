@@ -99,3 +99,29 @@ test("doc: link forms", () => {
   assert.equal(exportUrl("https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/edit?usp=sharing"), "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/export?format=html");
   assert.throws(() => exportUrl("https://example.com/x"));
 });
+
+test("saved drafts deleted in Buffer come back as unsaved", async () => {
+  const { forgetDeleted } = await import("../src/plan");
+  const mk = () => ({
+    publishDate: "2026-11-18", reason: "", createdAt: 0,
+    placeholder: { channelId: "c1", included: true, bufferId: "ph" },
+    suggestions: [
+      { slot: 1, role: "teaser", channelId: "c1", service: "twitter", channelName: "x", date: "2026-11-16", text: "a", included: true, bufferId: "gone" },
+      { slot: 2, role: "teaser", channelId: "c1", service: "twitter", channelName: "x", date: "2026-11-17", text: "b", included: true, bufferId: "kept" },
+      { slot: 3, role: "teaser", channelId: "c1", service: "twitter", channelName: "x", date: "2026-11-13", text: "c", included: true, bufferId: "today" },
+      { slot: 4, role: "teaser", channelId: "c1", service: "twitter", channelName: "x", date: "2026-11-20", text: "d", included: false },
+    ],
+  }) as any;
+  const queue = [{ id: "kept", channelId: "c1", dueAt: "", status: "draft", text: "" }, { id: "ph", channelId: "c1", dueAt: "", status: "draft", text: "" }];
+  const p = mk();
+  assert.equal(forgetDeleted(p, queue, "2026-11-13", "2026-12-20", true), 1);
+  assert.equal(p.suggestions[0].bufferId, undefined);
+  assert.equal(p.suggestions[0].included, true);
+  assert.equal(p.suggestions[1].bufferId, "kept");
+  assert.equal(p.suggestions[2].bufferId, "today"); // dated today: may have been sent
+  assert.equal(p.placeholder.bufferId, "ph");
+  const q = mk();
+  assert.equal(forgetDeleted(q, [], "2026-11-13", "2026-12-20", false), 0); // partial read: trust nothing
+  assert.equal(forgetDeleted(q, [], "2026-11-13", "2026-11-17", true), 2); // gone + kept in range; ph past range end
+  assert.equal(q.placeholder.bufferId, "ph");
+});

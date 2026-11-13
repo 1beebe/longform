@@ -1,6 +1,6 @@
 // The gap finder and the placement of suggested posts. Deterministic: no AI.
 import type { Channel, QueueItem } from "./buffer";
-import type { Role } from "./session";
+import type { Plan, Role } from "./session";
 import { addDays, daysBetween, localDate, weekday } from "./time";
 
 export const WINDOW_START = 3; // the earliest publish day, in days from today
@@ -127,4 +127,21 @@ export function place(busy: Busy, channels: Channel[], p: string, today: string,
     out.push({ slot: i + 1, role: shape.role, channelId: best.ch.id, service: best.ch.service, channelName: best.ch.name, date: best.date });
   });
   return out;
+}
+
+// Drafts deleted in Buffer. A saved post that is dated after today and inside
+// the calendar but no longer in the queue (drafts and scheduled posts) was
+// deleted there, so it goes back to unsaved. Posts dated today or earlier may
+// have been sent, and posts past the range aren't read, so those stay saved.
+// Only trust a complete queue read. Returns how many came back.
+export function forgetDeleted(plan: Plan, queue: QueueItem[], today: string, rangeEnd: string, complete: boolean): number {
+  if (!complete) return 0;
+  const live = new Set(queue.map((q) => q.id));
+  const gone = (id: string | undefined, date: string) => Boolean(id) && date > today && date <= rangeEnd && !live.has(id!);
+  let n = 0;
+  for (const c of plan.suggestions) {
+    if (gone(c.bufferId, c.date)) { c.bufferId = undefined; c.included = true; c.error = undefined; n++; }
+  }
+  if (gone(plan.placeholder.bufferId, plan.publishDate)) { plan.placeholder.bufferId = undefined; plan.placeholder.included = true; plan.placeholder.error = undefined; n++; }
+  return n;
 }
