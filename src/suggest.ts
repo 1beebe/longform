@@ -11,19 +11,31 @@ export const serviceName = (s: string) => SERVICE_NAMES[s] ?? s;
 
 const ROLE_BRIEF: Record<Role, string> = {
   teaser: "goes out before the piece. Makes a reader curious about the problem the piece takes on, drawing on the opening or the setup. Doesn't give the answer away.",
-  launch: `announces the piece on the day it goes out. Built from the piece's central claim. Ends with ${LINK} on its own line, where the writer will paste the link.`,
+  launch: `announces the piece on the day it goes out. Built from the piece's central claim. Ends with ${LINK} on its own line, where the link to the piece will go.`,
   pullquote: "uses a short exact quote from the body and frames it with a sentence that makes its point clear to someone who hasn't read the piece.",
   keyidea: "turns one idea from the body into a brief post with enough context to make the idea clear on its own.",
-  followup: "goes out about a week later. Revisit a point the writer actually makes. Use a closing thought or question only if it appears in the draft.",
+  followup: "goes out about a week later. Revisit a point the draft actually makes. Use a closing thought or question only if it appears in the draft.",
 };
 
-const SYSTEM = `You're an editor turning a writer's long-form piece into short social posts. Your only tools are summarizing and rephrasing what the piece already says. Write each post for someone who hasn't read the piece: name what it's about and make one point they can follow on its own.
+// Spoken as the account holder, who wrote the draft. The forbidden phrases are
+// named here so the model avoids them; the guard rejects them if one slips through.
+const VOICE = `The person publishing these posts wrote the draft. Write each post in their voice, as them, not about them.
 
-Everything in a post must already be in the draft: every claim, opinion, feeling, experience, example, number and name. Don't add a takeaway, lesson, moral, prediction, question or call to action the draft doesn't state. Don't infer what the writer thinks or felt, assign motives, or say they changed their mind or keep thinking about something. Use "I" only where the draft does, and only for things the draft says the writer did, thought or felt. Keep their degree of certainty. Keep emoji and hashtags only if the draft has them.
+Say the idea the way they would post it. Where the draft speaks in the first person, the post may too, for example "My take:" or "I argue", and only for things the draft says they did, thought, or felt. Where it does not, state the point directly ("Most teams treat the launch as the finish line.") instead of narrating it from outside.
+
+Never refer to them in the third person. Do not write "the writer", "the writer's", "the author", or "the author's" (including "the writer's take", "the writer argues", "the author says", and "in this piece the writer").
+
+Exception: if the draft is clearly someone else's published work, such as a public-domain essay that names its author, attribute the claim to that person by name ("Thoreau says"). Still never write "the writer" or "the author".`;
+
+const SYSTEM = `You're editing someone's long-form draft into short social posts they will publish themselves. Your only tools are summarizing and rephrasing what the draft already says. Write each post for someone who hasn't read the piece: name what it's about and make one point they can follow on its own.
+
+${VOICE}
+
+Everything in a post must already be in the draft: every claim, opinion, feeling, experience, example, number and name. Don't add a takeaway, lesson, moral, prediction, question or call to action the draft doesn't state. Don't infer thoughts, feelings, or motives the draft doesn't state, or say they changed their mind or keep thinking about something. Use "I" only where the draft does, and only for things the draft says they did, thought, or felt. Keep their degree of certainty. Keep emoji and hashtags only if the draft has them.
 
 Use sourceQuote for the exact excerpt that supports the post's main point. In text, rephrase or condense that point, with a sentence of context from the draft if it needs one. If a slot needs more than the draft gives you, keep the point narrow and the post short, or leave the slot out.
 
-Your posts are checked afterwards against the draft, word by word and claim by claim. Anything the draft doesn't support gets the post thrown out.
+Your posts are checked afterwards against the draft, word by word and claim by claim. Anything the draft doesn't support gets the post thrown out. A post that talks about its author from the outside gets thrown out too.
 
 Reply with JSON only.`;
 
@@ -35,7 +47,14 @@ export class RevisionRejected extends Error {}
 
 const CHECKER = `You check social posts against the long-form draft they were made from. A post may only summarize or rephrase the draft. Flag a post if any part of it states something the draft doesn't: a claim, fact, number, name, example, opinion, feeling, experience, motive, lesson, takeaway, prediction, question or call to action. Rewording, shortening and combining things the draft says is fine. Be strict: if you can't point to where the draft says it, flag it.
 
+Also flag a post that talks about the person who wrote the draft from the outside. That includes "the writer", "the writer's", "the author", and "the author's". Speaking as them, or stating the idea directly, is fine. If the draft is someone else's published work, naming that person (for example "Thoreau says") is fine.
+
 Reply with JSON only.`;
+
+function voiceNote(doc: Doc): string {
+  if (!doc.sample) return "";
+  return `This draft is the bundled sample: a public-domain essay by someone else, not the account holder's own piece. Attribute ideas to the person named in the title. Do not write as if the account holder lived it, and do not write "the writer" or "the author".\n\n`;
+}
 
 // A second, independent read: which posts say anything the draft doesn't?
 // Returns slot -> reason. If the check itself fails, the word-level guard stands alone.
@@ -49,7 +68,7 @@ ${docBlock(doc)}
 The posts:
 ${posts.map((p) => `- slot ${p.slot}: ${JSON.stringify(p.text.split(LINK).join("").trim())}`).join("\n")}
 
-For every post, reply with a JSON array like [{"slot": 1, "supported": false, "unsupported": "the exact words in the post the draft doesn't support"}]. Use "supported": true and "unsupported": "" when the whole post is backed by the draft.`;
+For every post, reply with a JSON array like [{"slot": 1, "supported": false, "unsupported": "the exact words in the post the draft doesn't support"}]. Use "supported": true and "unsupported": "" when the whole post is backed by the draft. Mark supported false when the post refers to its author as "the writer" or "the author" instead of speaking as them or stating the idea. Naming another person the draft is about is fine.`;
   try {
     const rows = parseJson<{ slot: number; supported?: boolean; unsupported?: string }[]>(await generate(env, CHECKER, message, 1500));
     if (!Array.isArray(rows)) throw new ModelFormatError("checker reply was not a list");
@@ -74,11 +93,11 @@ const SHAPE = `[{"slot": 1, "sectionIndex": 2, "sourceQuote": "the exact line fr
 
 async function ask(env: Env, doc: Doc, slots: Slot[], failures?: Map<number, string>, formatRetry = false): Promise<Raw[]> {
   const retry = failures?.size
-    ? `\n\nFix the issue listed for each slot. Only summarize or rephrase what the draft says. Keep the supporting excerpt exact.\n${[...failures].map(([n, why]) => `- slot ${n}: ${why}`).join("\n")}`
+    ? `\n\nFix the issue listed for each slot. Only summarize or rephrase what the draft says, in the voice of the person who will publish it. Keep the supporting excerpt exact.\n${[...failures].map(([n, why]) => `- slot ${n}: ${why}`).join("\n")}`
     : "";
   const message = `The draft, titled "${doc.title}":
 
-${docBlock(doc)}
+${voiceNote(doc)}${docBlock(doc)}
 
 Write one post for each slot below. Use a different section for each post where you can. For each, give the section it came from, the exact sentence or phrase from the draft it's built on (copied character for character), and the post.
 
@@ -148,7 +167,7 @@ export async function revise(env: Env, doc: Doc, card: Suggestion, instruction: 
   const section = doc.sections.find((s) => s.index === card.sectionIndex);
   const message = `The draft, titled "${doc.title}":
 
-${docBlock(doc)}
+${voiceNote(doc)}${docBlock(doc)}
 
 This post is a ${card.role} for ${serviceName(card.service)} (at most ${LIMITS[card.service] ?? 500} characters). A ${card.role} ${ROLE_BRIEF[card.role]}
 ${section ? `It was built from section ${section.index}, "${section.heading}".` : ""}
@@ -156,9 +175,9 @@ ${section ? `It was built from section ${section.index}, "${section.heading}".` 
 The post now:
 ${card.text}
 
-The writer asks: ${instruction}
+Requested change: ${instruction}
 
-Apply the writer's request by summarizing or rephrasing what the draft says, keeping the post self-contained. Preserve the post's main point unless the writer asks for a different point supported by the draft. If the requested change needs anything the draft doesn't say (a claim, experience, opinion, takeaway or question), return {"unsupported": true} and no revised text. Do not substitute another topic. Otherwise reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
+Apply that request by summarizing or rephrasing what the draft says, in the same voice as the rest of the posts, keeping the post self-contained. Preserve the post's main point unless the request asks for a different point supported by the draft. If the requested change needs anything the draft doesn't say (a claim, experience, opinion, takeaway or question), return {"unsupported": true} and no revised text. Do not substitute another topic. Otherwise reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
   let retry = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const output = await generate(env, SYSTEM, message + retry, 1200);
@@ -176,7 +195,7 @@ Apply the writer's request by summarizing or rephrasing what the draft says, kee
     const { s, why: lexical } = accept({ ...raw, slot: card.slot }, card, index, doc);
     const why = s ? (await verify(env, doc, [{ slot: card.slot, text: s.text }])).get(card.slot) : lexical;
     if (s && !why) return { ...card, text: s.text, sourceQuote: s.sourceQuote, sectionIndex: s.sectionIndex, included: card.included, bufferId: undefined, error: undefined };
-    retry = `\n\nFix the issue with the last attempt: ${why}. Keep the supporting excerpt exact and only summarize or rephrase what the draft says.`;
+    retry = `\n\nFix the issue with the last attempt: ${why}. Keep the supporting excerpt exact, speak as the person who will publish it, and only summarize or rephrase what the draft says.`;
   }
   throw new RevisionRejected("I couldn’t revise this post. Your draft was kept.");
 }

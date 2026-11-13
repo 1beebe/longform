@@ -210,19 +210,23 @@ button.ev.s:hover{background:var(--tint);transform:translateY(-1px)}
 .err{font-size:13.5px;color:var(--bad);background:var(--bad-tint);border-radius:8px;padding:8px 10px}
 .ok{font-size:13.5px;color:var(--good);font-weight:600}
 
-/* save dock */
-.dock{position:sticky;bottom:18px;z-index:5;max-width:calc(var(--max) - 2*var(--gut));margin:40px auto 24px;width:calc(100% - 2*var(--gut));background:var(--solid);color:var(--solid-ink);border-radius:999px;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 24px;box-shadow:var(--shadow-lg)}
-.dock .t{font-size:15.5px}
+/* save dock. The bar stays put; the confirmation floats above it. */
+.dock-wrap{position:sticky;bottom:18px;z-index:6;max-width:calc(var(--max) - 2*var(--gut));margin:40px auto 24px;width:calc(100% - 2*var(--gut))}
+.dock{position:relative;background:var(--solid);color:var(--solid-ink);border-radius:999px;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 24px;box-shadow:var(--shadow-lg)}
+.dock .t{font-size:15.5px;min-width:0}
 .dock .sp{margin-left:auto}
 .dock .ghost{display:inline-flex;align-items:center;min-height:44px;border:1px solid var(--solid-line);border-radius:999px;padding:9px 18px;font-size:14.5px;font-weight:600;text-decoration:none;background:none;color:inherit;transition:border-color .15s}
 .dock .ghost:hover{border-color:var(--solid-ink)}
-.dock .btn{background:#4fbcc7;color:#06252a;box-shadow:none}
+.dock .btn{background:#4fbcc7;color:#06252a;box-shadow:none;flex:none}
 .dock .btn:hover{background:#76ccd5}
-.done-card{margin-top:40px;text-align:center;padding:40px 22px}
-.done-card .tick{width:52px;height:52px;border-radius:50%;background:var(--good-tint);color:var(--good);display:grid;place-items:center;margin:0 auto 14px;font-size:24px;font-weight:700}
-.done-card h2{font-size:28px}
-.done-card p{color:var(--muted);margin-top:8px}
-.done-card .row{justify-content:center}
+.dock .chan-links{display:flex;gap:8px;align-items:center;max-width:min(720px,68%);overflow-x:auto;scrollbar-width:thin}
+.dock .chan-links .btn{flex:none;white-space:nowrap}
+.saved-panel{position:absolute;left:0;right:0;bottom:calc(100% + 12px);margin:0;text-align:left;padding:18px 20px 16px;max-height:min(48vh,420px);overflow:auto}
+.saved-panel h2{font-size:22px}
+.saved-panel p{color:var(--muted);margin-top:6px}
+.saved-list{list-style:none;padding:0;margin:14px 0 0;display:flex;flex-direction:column;gap:6px}
+.saved-list li{font-size:14.5px;line-height:1.4;background:var(--sunk);border-radius:10px;padding:8px 12px;color:var(--ink)}
+.saved-panel .row{margin-top:14px}
 .prose{max-width:720px}
 .prose h1{font-size:40px}
 .prose h2{font-size:21px;margin-top:28px}
@@ -311,6 +315,8 @@ button.ev.s:hover{background:var(--tint);transform:translateY(-1px)}
   .dock .t{width:100%;padding:2px 8px 4px}
   .dock .sp{display:none}
   .dock .btn{flex:1}
+  .dock .chan-links{max-width:100%;flex:1 1 100%}
+  .dock .chan-links .btn{flex:0 0 auto}
   .src{flex-wrap:wrap}.src .act{margin-left:54px;width:100%}
   .posts{grid-template-columns:1fr}
 }

@@ -2,7 +2,7 @@ import type { Env } from "./env";
 import { pkcePair, randomToken } from "./crypto";
 import {
   BufferClient, NeedsReconnect, RateLimited, authorizeUrl, createDatedDraft, exchangeCode, getChannels, getQueue, getStart,
-  type Channel, type QueueItem,
+  type Channel, type CreatedPost, type QueueItem,
 } from "./buffer";
 import { DocError, fetchDoc, parsePasted } from "./doc";
 import { GoogleReconnect, googleAuthUrl, googleExchange, googleReady, googleToken, readPickedDoc, revokeGoogle } from "./google";
@@ -11,6 +11,7 @@ import { ModelBusy, ModelError, hasModel } from "./model";
 import { busyByDay, forgetDeleted, pickPublishDay, place, placeholderChannel, reasonFor, type Slot } from "./plan";
 import { cookie, createSession, destroySession, loadSession, readCookie, saveSession, type Session, type Suggestion } from "./session";
 import { RevisionRejected, revise, serviceName, suggest } from "./suggest";
+import { orderSavedDrafts, toSavedDraft, type DraftFallback, type SavedDraft } from "./saved";
 import { addDays, localDate, mondayOf, validZone, zonedIso } from "./time";
 import { appPage, privacyPage } from "./page";
 import { STATIC } from "./static";
@@ -364,6 +365,12 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
           return ["10:00", "13:00", "16:00", "19:00"][Math.min(n, 3)];
         };
         let saved = 0;
+        const savedDrafts: SavedDraft[] = [];
+        // fallback fills only a field createPost left out. The line the person
+        // sees is built from the post Buffer returned.
+        const note = (post: CreatedPost, fallback: DraftFallback) => {
+          savedDrafts.push(toSavedDraft(post, bd.timezone, fallback));
+        };
         const todo: Suggestion[] = p.suggestions.filter((x) => x.included && !x.bufferId);
         for (const card of todo) {
           card.error = undefined;
@@ -372,8 +379,11 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
           if (!card.text.trim()) { card.error = "This post is empty."; continue; }
           if (card.text.length > (LIMITS[ch.service] ?? 500)) { card.error = `Too long for ${serviceName(ch.service)} (${card.text.length} of ${LIMITS[ch.service] ?? 500} characters).`; continue; }
           if (card.date < earliest || card.date > addDays(bd.today, 90)) { card.error = "Move this one to a day from tomorrow on."; continue; }
+          const dueAt = zonedIso(card.date, timeFor(card.date, ch.id), bd.timezone);
           try {
-            card.bufferId = await createDatedDraft(client, { channelId: ch.id, service: ch.service, text: card.text, dueAt: zonedIso(card.date, timeFor(card.date, ch.id), bd.timezone) });
+            const post = await createDatedDraft(client, { channelId: ch.id, service: ch.service, text: card.text, dueAt });
+            card.bufferId = post.id;
+            note(post, { channelId: ch.id, service: ch.service, channelName: ch.name, dueAt, text: card.text });
             saved++;
           } catch (err) {
             if (err instanceof NeedsReconnect || err instanceof RateLimited) throw err;
@@ -387,8 +397,12 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
           if (!ch) p.placeholder.error = "Pick a channel for the placeholder.";
           else if (p.publishDate < earliest) p.placeholder.error = "Pick a publish day from tomorrow on.";
           else {
+            const dueAt = zonedIso(p.publishDate, "08:00", bd.timezone);
+            const text = placeholderText(s, env.APP_NAME || "Longform");
             try {
-              p.placeholder.bufferId = await createDatedDraft(client, { channelId: ch.id, service: ch.service, text: placeholderText(s, env.APP_NAME || "Longform"), dueAt: zonedIso(p.publishDate, "08:00", bd.timezone) });
+              const post = await createDatedDraft(client, { channelId: ch.id, service: ch.service, text, dueAt });
+              p.placeholder.bufferId = post.id;
+              note(post, { channelId: ch.id, service: ch.service, channelName: ch.name, dueAt, text });
               saved++;
             } catch (err) {
               if (err instanceof NeedsReconnect || err instanceof RateLimited) throw err;
@@ -398,7 +412,7 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
         }
         await save();
         const failed = todo.filter((x) => x.error).length + (p.placeholder.error ? 1 : 0);
-        return json({ ...view(s, bd), saved, failed });
+        return json({ ...view(s, bd), saved, failed, savedDrafts: orderSavedDrafts(savedDrafts) });
       }
 
       if (req.method === "POST" && path === "/api/reset") {

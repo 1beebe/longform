@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DocIndex, fit } from "../src/guard";
+import { DocIndex, fit, selfReference } from "../src/guard";
 import { busyByDay, pickPublishDay, place, reasonFor } from "../src/plan";
 import { parseDocHtml, parsePasted, exportUrl } from "../src/doc";
 import { zonedIso, localDate, addDays, weekday } from "../src/time";
@@ -44,6 +44,36 @@ test("guard: first person only when the draft speaks in it", () => {
   const ix = new DocIndex("Teams treat the launch as the finish line. It is the starting gun.");
   assert.equal(ix.passes("I used to think the launch was the finish line. It is the starting gun.", "It is the starting gun.").ok, false);
   assert.equal(ix.passes("Teams treat the launch like the finish line. It is really the starting gun.", "It is the starting gun.").ok, true);
+});
+
+test("guard: rejects third-person references to the person who wrote the draft", () => {
+  const ix = new DocIndex(DOC);
+  const q = "It is the starting gun.";
+  // Before: narrating the author from outside. Each of these is rejected.
+  const before = [
+    "The writer's take: It is the starting gun.",
+    "The writer argues that it is the starting gun.",
+    "The author says the real work is the week after. It is the starting gun.",
+    "In this piece the writer calls it out. It is the starting gun.",
+    "The author’s point: It is the starting gun.",
+  ];
+  for (const post of before) {
+    const why = ix.passes(post, q).why ?? "";
+    assert.match(why, /from outside/, post);
+  }
+  assert.match(selfReference("The Writer's take on the launch.") ?? "", /the writer's/i);
+  // A named person is not "the writer". "authority" is not "the author".
+  assert.equal(selfReference("Thoreau says the launch is the starting gun."), undefined);
+  assert.equal(selfReference("The authority of a quiet day is the starting gun."), undefined);
+  // After: the same points, spoken as the author or stated directly.
+  const after = [
+    "My take: It is the starting gun. The real work is the week after.",
+    "Most teams treat the launch as the finish line. The real work is the week after. It is the starting gun.",
+    "The real work is the week after, when nobody is watching. It is the starting gun.",
+    "I learned this the hard way. It is the starting gun.",
+    "Here is what I do now. I pick a quiet day. It is the starting gun.",
+  ];
+  for (const post of after) assert.equal(ix.passes(post, q).ok, true, post);
 });
 
 test("fit trims whole sentences and keeps [link]", () => {
@@ -124,6 +154,43 @@ test("saved drafts deleted in Buffer come back as unsaved", async () => {
   assert.equal(forgetDeleted(q, [], "2026-11-13", "2026-12-20", false), 0); // partial read: trust nothing
   assert.equal(forgetDeleted(q, [], "2026-11-13", "2026-11-17", true), 2); // gone + kept in range; ph past range end
   assert.equal(q.placeholder.bufferId, "ph");
+});
+
+test("saved confirmation is built from the createPost payload", async () => {
+  const { channelDraftsUrl, draftLinks, orderSavedDrafts, toSavedDraft } = await import("../src/saved");
+  assert.equal(
+    channelDraftsUrl("66ae4db8602872be45a280bb"),
+    "https://publish.buffer.com/channels/66ae4db8602872be45a280bb/schedule?tab=drafts",
+  );
+  const text = "Thoreau says he has met with but one or two persons who understood the art of Walking, and that is the whole of it.";
+  const draft = toSavedDraft({
+    id: "p1",
+    dueAt: "2026-11-30T15:00:00.000Z",
+    text: `${text}\n\n[link]`,
+    channelId: "ch-x",
+    channel: { id: "ch-x", service: "twitter", name: "ignored-handle", displayName: "samplewriter" },
+  }, "America/New_York", {
+    channelId: "other", service: "linkedin", channelName: "Wrong Name", dueAt: "2026-01-01T00:00:00Z", text: "ignored text",
+  });
+  assert.equal(draft.id, "p1");
+  assert.equal(draft.channelId, "ch-x");
+  assert.equal(draft.service, "twitter");
+  assert.equal(draft.channelName, "samplewriter");
+  assert.equal(draft.href, channelDraftsUrl("ch-x"));
+  assert.equal(draft.line, `X · samplewriter · Mon Nov 30, 10:00 AM · ${text.slice(0, 61).trimEnd()}...`);
+  assert.equal(draft.line.includes("—"), false);
+  const later = toSavedDraft({
+    id: "p2", dueAt: "2026-12-01T13:00:00-05:00", text: "A second post.", channelId: "ch-x",
+    channel: { id: "ch-x", service: "twitter", displayName: "samplewriter" },
+  }, "America/New_York");
+  const early = toSavedDraft({
+    id: "p0", dueAt: "2026-11-27T15:00:00.000Z", text: "First.", channelId: "ch-li",
+    channelService: "linkedin", channel: { id: "ch-li", service: "linkedin", name: "Sample Writer" },
+  }, "America/New_York");
+  const ordered = orderSavedDrafts([later, draft, early]);
+  assert.deepEqual(ordered.map((d) => d.id), ["p0", "p1", "p2"]);
+  assert.equal(draftLinks(ordered).length, 2);
+  assert.equal(early.line.startsWith("LinkedIn · Sample Writer · Fri Nov 27, 10:00 AM · First."), true);
 });
 
 test("sample piece: Walking loads as a sectioned doc", async () => {
