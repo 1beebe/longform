@@ -11,16 +11,18 @@ I learned this the hard way. My first long essay went out on a Friday, I posted 
 
 Here is what I do now. I pick a quiet day. I tease the problem twice before it goes out. I quote one line the day after.`;
 
-test("guard: quote must be in the doc and posts must be mostly theirs", () => {
+test("guard: accepts a standalone adaptation with an excerpt from the draft", () => {
   const ix = new DocIndex(DOC);
-  assert.equal(ix.hasQuote("It is the starting gun."), true);
+  const quote = "It is the starting gun.";
+  assert.equal(ix.hasQuote(quote), true);
   assert.equal(ix.hasQuote("It’s the starting gun."), false);
   assert.equal(ix.hasQuote("Most teams treat the launch as the finish line ... It is the starting gun"), true);
-  const theirs = "Most teams treat the launch as the finish line. It is the starting gun.";
-  assert.equal(ix.passes(theirs, "It is the starting gun.").ok, true);
-  const rewritten = "Launching is just the beginning, friends! Here are five hot tips to boost engagement today.";
-  assert.equal(ix.passes(rewritten, "It is the starting gun.").ok, false);
-  assert.equal(ix.passes(`${theirs}\n\n[link]`, "It is the starting gun.").ok, true);
+  const adapted = "Publishing an essay is the start. What you do the following week helps it find readers.";
+  assert.equal(ix.passes(adapted, quote).ok, true);
+  assert.equal(ix.passes(adapted, "Launching is just the beginning.").ok, false);
+  assert.equal(ix.passes("“It is the starting gun!”", quote).ok, false);
+  assert.equal(ix.passes(`${quote}\n\n[link]`, quote).ok, false);
+  assert.equal(ix.passes(`An essay’s launch is only the beginning. “${quote}”`, quote).ok, true);
 });
 
 test("fit trims whole sentences and keeps [link]", () => {

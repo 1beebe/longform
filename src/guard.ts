@@ -1,6 +1,3 @@
-// The own-words guard: every suggestion has to be built from the writer's lines.
-
-export const MIN_OWN = 0.65;
 export const LINK = "[link]";
 
 export function normalize(s: string): string {
@@ -24,13 +21,11 @@ function words(s: string): string[] {
 
 export class DocIndex {
   readonly text: string;
-  private grams = new Set<string>();
-  private vocab = new Set<string>();
+  private readonly docWords: string;
+
   constructor(doc: string) {
     this.text = normalize(doc);
-    const w = words(doc);
-    for (const x of w) this.vocab.add(x);
-    for (let i = 0; i + 2 < w.length; i++) this.grams.add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`);
+    this.docWords = ` ${words(doc).join(" ")} `;
   }
 
   // The quote must appear word for word (an ellipsis may join two pieces).
@@ -39,20 +34,13 @@ export class DocIndex {
     return parts.length > 0 && parts.every((p) => this.text.includes(p));
   }
 
-  // Share of the post's 3-word sequences that also appear in the doc.
-  ownShare(post: string): number {
-    const w = words(post);
-    if (!w.length) return 0;
-    if (w.length < 3) return w.every((x) => this.vocab.has(x)) ? 1 : 0;
-    let hit = 0;
-    for (let i = 0; i + 2 < w.length; i++) if (this.grams.has(`${w[i]} ${w[i + 1]} ${w[i + 2]}`)) hit++;
-    return hit / (w.length - 2);
-  }
-
   passes(post: string, quote: string): { ok: boolean; why?: string } {
     if (!this.hasQuote(quote)) return { ok: false, why: "its source line isn't in the doc" };
-    const share = this.ownShare(post);
-    if (share < MIN_OWN) return { ok: false, why: `only ${Math.round(share * 100)}% of it comes from the doc` };
+    const body = words(post).join(" ");
+    if (!body) return { ok: false, why: "the post has no body text" };
+    if (this.docWords.includes(` ${body} `)) {
+      return { ok: false, why: "the post only repeats an excerpt from the doc" };
+    }
     return { ok: true };
   }
 }

@@ -10,16 +10,16 @@ const SERVICE_NAMES: Record<string, string> = {
 export const serviceName = (s: string) => SERVICE_NAMES[s] ?? s;
 
 const ROLE_BRIEF: Record<Role, string> = {
-  teaser: "goes out before the piece. Makes a reader curious about the problem the piece takes on, using a line from the opening or the setup. Doesn't give the answer away.",
+  teaser: "goes out before the piece. Makes a reader curious about the problem the piece takes on, drawing on the opening or the setup. Doesn't give the answer away.",
   launch: `announces the piece on the day it goes out. Built from the piece's central claim. Ends with ${LINK} on its own line, where the writer will paste the link.`,
-  pullquote: "one quotable line from the body that stands on its own, kept nearly word for word.",
-  keyidea: "one idea from the body, in the writer's own sentences, short enough to read in a breath.",
+  pullquote: "uses a short exact quote from the body and frames it with a sentence that makes its point clear to someone who hasn't read the piece.",
+  keyidea: "turns one idea from the body into a brief post with enough context to make the idea clear on its own.",
   followup: "goes out about a week later. A closing thought, or a question the piece ends on, from the last part of the draft.",
 };
 
-const SYSTEM = `You're an editor helping a writer promote their own long-form piece. You don't write for them. You find the sentences in their draft that already work on their own, and you trim and reorder them into short social posts.
+const SYSTEM = `You're an editor adapting a writer's long-form piece into short social posts. Write each post for someone who hasn't read the piece. Give it a clear opening, name what it's about, and develop one point the reader can understand on its own.
 
-Keep their wording. Cut, trim, and reorder; don't rewrite. Don't add facts, claims, numbers, names, emoji or hashtags that aren't in the draft. Don't add a call to action unless the draft has one. A post can join two of their sentences, or cut one down, but nearly every phrase in it should be theirs, word for word.
+Keep the writer's voice and meaning. Rephrase where needed and supply missing context using details from the draft. Use sourceQuote for the exact supporting excerpt. In text, turn the idea into a complete post, with framing around any quote you include. Don't add facts, claims, numbers, names, emoji or hashtags that aren't in the draft. Don't add a call to action unless the draft has one.
 
 Reply with JSON only.`;
 
@@ -35,9 +35,9 @@ function slotLines(slots: Slot[]): string {
 
 const SHAPE = `[{"slot": 1, "sectionIndex": 2, "sourceQuote": "the exact line from the draft this post is built on", "text": "the post"}]`;
 
-async function ask(env: Env, doc: Doc, slots: Slot[], closer?: Map<number, string>): Promise<Raw[]> {
-  const retry = closer?.size
-    ? `\n\nYour last try at these didn't keep enough of the writer's words. Stay closer to the quoted lines this time: lift whole sentences and only trim.\n${[...closer].map(([n, t]) => `- slot ${n} last time: ${JSON.stringify(t)}`).join("\n")}`
+async function ask(env: Env, doc: Doc, slots: Slot[], failures?: Map<number, string>): Promise<Raw[]> {
+  const retry = failures?.size
+    ? `\n\nFix the issue listed for each slot. Keep the supporting excerpt exact and write a standalone post.\n${[...failures].map(([n, why]) => `- slot ${n}: ${why}`).join("\n")}`
     : "";
   const message = `The draft, titled "${doc.title}":
 
@@ -79,7 +79,7 @@ export async function suggest(env: Env, doc: Doc, slots: Slot[]): Promise<{ sugg
     const raw = first.find((r) => Number(r.slot) === slot.slot);
     const { s, why } = accept(raw, slot, index, doc);
     if (s) kept.set(slot.slot, s);
-    else { failed.set(slot.slot, raw?.text ?? ""); console.log(`slot ${slot.slot} failed: ${why}`); }
+    else { failed.set(slot.slot, why ?? "invalid post"); console.log(`slot ${slot.slot} failed: ${why}`); }
   }
   if (failed.size) {
     const again = await ask(env, doc, slots.filter((s) => failed.has(s.slot)), failed).catch(() => [] as Raw[]);
@@ -108,11 +108,13 @@ ${card.text}
 
 The writer asks: ${instruction}
 
-Change it the way they ask, still using their own lines from the draft. Reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
+Apply the writer's request while keeping the post self-contained and grounded in the draft. Reply with JSON only: {"sectionIndex": 3, "sourceQuote": "the exact line from the draft it's built on", "text": "the revised post"}`;
+  let retry = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = parseJson<Raw>(await generate(env, SYSTEM, attempt ? `${message}\n\nYour last try drifted from their words. Stay closer to the quoted lines: lift whole sentences and only trim.` : message, 1200));
-    const { s } = accept({ ...raw, slot: card.slot }, card, index, doc);
+    const raw = parseJson<Raw>(await generate(env, SYSTEM, message + retry, 1200));
+    const { s, why } = accept({ ...raw, slot: card.slot }, card, index, doc);
     if (s) return { ...card, text: s.text, sourceQuote: s.sourceQuote, sectionIndex: s.sectionIndex, included: card.included, bufferId: undefined, error: undefined };
+    retry = `\n\nFix the issue with the last attempt: ${why}. Keep the supporting excerpt exact and write a standalone post.`;
   }
-  throw new Error("That change would move too far from your own words, so I left the post as it was. Try asking for something smaller.");
+  throw new Error("I couldn’t revise this post. Your current draft is still available to edit.");
 }

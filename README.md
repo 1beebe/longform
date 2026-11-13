@@ -1,6 +1,6 @@
 # Longform
 
-Plan a long-form piece around your Buffer queue. Paste a Google Doc link and connect Buffer; Longform finds an open day to publish, suggests supporting posts pulled from your own sentences, and saves the ones you keep to Buffer as dated drafts, next to a publish-day placeholder that links back to the doc. Nothing publishes on its own.
+Plan a long-form piece around your Buffer queue. Paste a Google Doc link and connect Buffer; Longform finds an open day to publish, suggests standalone supporting posts based on your draft, and saves the ones you keep to Buffer as dated drafts, next to a publish-day placeholder that links back to the doc. Nothing publishes on its own.
 
 Working name. Separate product from The Interviewer.
 
@@ -10,7 +10,7 @@ Working name. Separate product from The Interviewer.
 - **Doc:** Connect Google (OAuth with PKCE, scope `drive.file` only) and pick the draft in Google's file picker; the server reads it through the Drive export as HTML, and h1 to h3 become sections. `drive.file` means the app can open only files the person picks. Fallbacks: a link shared as "anyone with the link can view", or pasted text. Without the Google settings the app shows only the fallbacks.
 - **Queue:** scheduled posts and dated drafts for six weeks from this Monday, via `posts(input: { filter: { status, dueAt: { start, end } } })`. Falls back to paging by status if the date filter is ever refused.
 - **Gap finder** (`src/plan.ts`, no AI): scores days 3 to 30 days out by posts that day and the two days either side, Tuesday to Thursday first, weekends last. Places two teasers before, the launch post on the day, a pull-quote and key idea after, and a follow-up a week later, never two on one channel on one day. The "why" sentence is written from the queue data.
-- **Suggestions** (`src/suggest.ts`): Claude Sonnet via MindStudio (`MINDSTUDIO_API_KEY`) or the Anthropic API (`ANTHROPIC_API_KEY`). The own-words guard (`src/guard.ts`) requires the source quote to appear in the doc word for word and at least 65% of the post's 3-word sequences to come from the doc. A failing post is retried once with "stay closer", then dropped. "Ask for changes" runs through the same guard.
+- **Suggestions** (`src/suggest.ts`): Claude Sonnet via MindStudio (`MINDSTUDIO_API_KEY`) or the Anthropic API (`ANTHROPIC_API_KEY`). The guard (`src/guard.ts`) checks that the supporting quote appears in the doc and rejects posts that simply repeat a contiguous excerpt. A failing post is retried once with the reason, then dropped. "Ask for changes" runs through the same guard.
 - **Save:** one `createPost` per ticked card with `mode: customScheduled`, `dueAt` in the account timezone and `saveToDraft: true`, plus a publish-day placeholder draft on the channel you pick (Substack first, then LinkedIn).
 - Guard rails: 20 model calls per person an hour, 400 app-wide a day (`DAILY_MODEL_CALLS`).
 
