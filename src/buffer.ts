@@ -130,11 +130,11 @@ export interface Org {
   name: string;
 }
 
-export async function getStart(client: BufferClient): Promise<{ orgs: Org[]; timezone?: string }> {
-  const data = await client.query<{ account: { timezone?: string; organizations: Org[] } }>(
-    `query Start { account { timezone organizations { id name } } }`,
-  ).catch(() => client.query<{ account: { timezone?: string; organizations: Org[] } }>(`query Start { account { organizations { id name } } }`));
-  return { orgs: data.account.organizations ?? [], timezone: data.account.timezone };
+export async function getStart(client: BufferClient): Promise<{ orgs: Org[]; timezone?: string; accountId?: string }> {
+  const data = await client.query<{ account: { id?: string; timezone?: string; organizations: Org[] } }>(
+    `query Start { account { id timezone organizations { id name } } }`,
+  ).catch(() => client.query<{ account: { id?: string; timezone?: string; organizations: Org[] } }>(`query Start { account { organizations { id name } } }`));
+  return { orgs: data.account.organizations ?? [], timezone: data.account.timezone, accountId: data.account.id };
 }
 
 export interface Channel {

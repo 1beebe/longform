@@ -57,6 +57,7 @@ export interface Plan {
 
 export interface Session {
   tokens: Tokens;
+  accountId?: string; // the Buffer account, so a different person signing in on this browser starts clean
   organizationId?: string;
   organizationName?: string;
   orgs?: { id: string; name: string }[];
