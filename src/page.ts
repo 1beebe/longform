@@ -1,32 +1,133 @@
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-const MARK = `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="26" height="23" rx="6" fill="#4f46e5"/><rect x="3" y="5" width="26" height="7" rx="3" fill="#1b2133"/><rect x="9" y="17" width="6" height="6" rx="1.5" fill="#fff"/></svg>`;
+// The mark: a page whose lines get shorter, like a long piece trimmed into posts.
+const MARK = `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><rect x="8" y="9" width="16" height="3" rx="1.5" fill="var(--accent-ink)"/><rect x="8" y="14.5" width="12" height="3" rx="1.5" fill="var(--accent-ink)"/><rect x="8" y="20" width="7" height="3" rx="1.5" fill="var(--accent-ink)"/></svg>`;
 
-function shell(name: string, title: string, main: string, script = true): string {
+const DESCRIPTION = "Plan the launch of a long-form piece around your Buffer queue: an open day to publish, and posts rephrased from your own draft, saved to Buffer as drafts.";
+
+function shell(name: string, title: string, main: string, opts: { script?: boolean; nav?: string } = {}): string {
+  const script = opts.script ?? true;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
-<meta name="description" content="Plan your long-form piece around your Buffer queue, with posts pulled from your own draft.">
+<meta name="description" content="${DESCRIPTION}">
+<meta property="og:title" content="${esc(name)}">
+<meta property="og:description" content="${DESCRIPTION}">
+<meta name="theme-color" content="#f7f9fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1a1f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
+<a class="skip" href="#app">Skip to content</a>
 <header class="top">
-  <a class="brand" href="/">${MARK}<b>${esc(name)}</b><span class="ctx">Long-form planner</span></a>
-  <span class="r" id="who"></span>
+  <a class="brand" href="/">${MARK}<b>${esc(name)}</b></a>
+  <span class="r" id="who">${opts.nav ?? ""}</span>
 </header>
 ${main}
-<footer class="foot"><a href="/privacy">Privacy</a><span>Not affiliated with Buffer or Google.</span></footer>
+<footer class="foot"><a href="/privacy">Privacy</a><span>Made by L. Beebe, LLC</span><span>Not affiliated with Buffer or Google.</span></footer>
 ${script ? `<script src="/app.js" defer></script>` : ""}
 </body>
 </html>`;
 }
 
-export function appPage(name: string): string {
-  return shell(name, `${name} · plan your long-form`, `<main id="app" data-name="${esc(name)}"><p class="loading">Loading…</p></main><div id="dock-slot"></div>`);
+// The landing page doubles as the first onboarding step. It is rendered on the
+// server so a visitor sees it at once; app.js hides it for signed-in people.
+// Lines marked VOICE are working copy for Ligaya to replace with her own words.
+function landing(name: string, show: boolean): string {
+  const n = esc(name);
+  return `<div id="landing" class="landing"${show ? "" : " hidden"}>
+<section class="l-hero" aria-labelledby="l-h1">
+  <div class="l-wrap l-hero-grid">
+    <div class="l-copy" data-enter>
+      <!-- VOICE: headline and sub-line are working copy. -->
+      <h1 id="l-h1">Launch planner for long&#8209;form writers</h1>
+      <p class="l-sub">Pick your draft in Google Docs. ${n} finds a quiet day in your Buffer queue to publish it and lines up posts around that day, each one rephrased from your piece.</p>
+      <div id="l-banners"></div>
+      <div class="l-actions">
+        <a class="btn" href="/connect">Connect Buffer</a>
+        <a class="btn ghost" href="#how">See the three steps</a>
+      </div>
+      <p class="fine">Everything saves to Buffer as a draft. Nothing posts on its own.</p>
+    </div>
+    <figure class="frame l-shot" data-enter style="--d:120ms">
+      <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i><span>${n}</span></div>
+      <picture>
+        <source media="(max-width: 700px)" srcset="/shots/agenda.webp" width="780" height="1120">
+        <img src="/shots/calendar.webp" width="1800" height="1095" alt="The ${n} planner: a four-week calendar of a Buffer queue with a suggested publish day marked by a star and suggested posts placed on the open days around it.">
+      </picture>
+    </figure>
+  </div>
+</section>
+
+<section class="l-problem" aria-labelledby="l-problem-h">
+  <div class="l-wrap">
+    <!-- VOICE: the problem statement. Replace with how you'd say it. -->
+    <h2 id="l-problem-h">Writing the piece is half the work. <span>Getting it read is the other half.</span></h2>
+    <p>Promoting a long piece means rereading your own draft, pulling lines for each channel and finding days your queue isn't already full. ${n} does that part, from what you already wrote.</p>
+  </div>
+</section>
+
+<section class="l-how" id="how" aria-labelledby="l-how-h">
+  <div class="l-wrap">
+    <h2 id="l-how-h">How it works, in three steps</h2>
+    <ol class="l-steps">
+      <li>
+        <figure class="frame"><img src="/shots/step-queue.webp" width="1200" height="759" loading="lazy" alt="Two cards: a Google Doc with its word count and sections, and the Buffer queue with four channels and eleven posts queued."></figure>
+        <span class="num">1</span>
+        <h3>Connect Buffer</h3>
+        <p>It reads the next six weeks of your queue, so it can see which days are already busy.</p>
+      </li>
+      <li>
+        <figure class="frame"><img src="/shots/step-doc.webp" width="1200" height="759" loading="lazy" alt="The draft step: a Choose from Google Drive button, with options to use a share link or paste the text instead."></figure>
+        <span class="num">2</span>
+        <h3>Choose your draft in Google Docs</h3>
+        <p>Pick it in Google's file picker. The app can open only that doc, and it never edits it.</p>
+      </li>
+      <li>
+        <figure class="frame"><img src="/shots/step-posts.webp" width="1200" height="759" loading="lazy" alt="Suggested post cards, each with its date, channel, the line from the draft it came from, and an editable text box."></figure>
+        <span class="num">3</span>
+        <h3>Keep the posts you like</h3>
+        <p>Edit, move or untick any post, then save. They land in Buffer as drafts on their dates.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="l-own" aria-labelledby="l-own-h">
+  <div class="l-wrap l-own-grid">
+    <div>
+      <h2 id="l-own-h">Every post comes from your draft.</h2>
+      <p>Posts only summarize or rephrase what your piece says. A second check throws out any post that adds an opinion, a number or an experience your draft doesn't have.</p>
+      <ul class="l-facts">
+        <li>Each post shows the line it came from.</li>
+        <li>Nothing publishes until you approve it in Buffer.</li>
+        <li>Signing out deletes your draft and plan.</li>
+      </ul>
+    </div>
+    <figure class="frame"><img src="/shots/post.webp" width="742" height="896" loading="lazy" alt="One suggested post for LinkedIn, with the quoted line from the draft above the rephrased text."></figure>
+  </div>
+</section>
+
+<section class="l-close" aria-labelledby="l-close-h">
+  <div class="l-wrap">
+    <h2 id="l-close-h">Plan the launch of your next piece</h2>
+    <p>Sign in with Buffer, then pick the draft.</p>
+    <a class="btn" href="/connect">Connect Buffer</a>
+  </div>
+</section>
+</div>`;
+}
+
+export function appPage(name: string, signedOut = false): string {
+  const nav = signedOut ? `<a class="btn small" href="/connect">Connect Buffer</a>` : "";
+  return shell(name, `${name} · plan the launch of your long-form`,
+    `${landing(name, signedOut)}<main id="app" data-name="${esc(name)}"${signedOut ? " hidden" : ""}><p class="loading">Loading…</p></main><div id="dock-slot"></div>`,
+    { nav });
 }
 
 export function privacyPage(name: string): string {
@@ -42,5 +143,5 @@ export function privacyPage(name: string): string {
 <h2>Questions</h2>
 <p>Write to L. Beebe, LLC through <a href="https://lbeebe.com">lbeebe.com</a>.</p>
 <p><a href="/">Back to the planner</a></p>
-</main>`, false);
+</main>`, { script: false });
 }

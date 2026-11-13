@@ -31,11 +31,41 @@ let plan: any = {
   placeholder: { channelId: placeholderChannel(channels)!.id, included: true },
   createdAt: Date.now(),
 };
+// DEMO=1 swaps the bracketed fixtures for a public-domain draft (Thoreau's
+// "Walking", 1862), so screenshots for the landing page read like the real
+// thing without anyone's private queue or writing in them.
+const DEMO = process.env.DEMO === "1";
+let docTitle = "[Sample long-form title]";
+let docWords = 1840;
+if (DEMO) {
+  docTitle = "Walking (Thoreau, 1862)";
+  docWords = 12086;
+  const heads = ["Sauntering", "Four hours a day", "Westward", "In wildness", "Fields and woods"];
+  sections.splice(0, sections.length, ...heads.map((heading, i) => ({ index: i + 1, heading })));
+  const texts = ["Weekly reading list", "Notes from the archive", "Book club reminder", "Reading list follow-up", "Weekly reading list", "Ask me anything thread", "Notes from the archive", "Weekly reading list", "Book club reminder", "Weekly reading list", "Notes from the archive"];
+  queue.forEach((x, i) => (x.text = texts[i % texts.length]));
+  const posts: Record<string, { sectionIndex: number; sourceQuote: string; text: string }[]> = {
+    teaser: [
+      { sectionIndex: 1, sourceQuote: "I have met with but one or two persons in the course of my life who understood the art of Walking", text: "In a whole lifetime, Thoreau met only one or two people who understood the art of taking walks." },
+      { sectionIndex: 2, sourceQuote: "unless I spend four hours a day at least", text: "Four hours a day, at least. That is how long Thoreau said he had to spend sauntering through woods, hills and fields, free of all worldly engagements, to keep his health and spirits." },
+    ],
+    launch: [{ sectionIndex: 0, sourceQuote: "I wish to speak a word for Nature, for absolute freedom and wildness", text: "Walking speaks a word for nature, for absolute freedom and wildness, as against a freedom and culture that are merely civil.\n\n[link]" }],
+    pullquote: [{ sectionIndex: 4, sourceQuote: "In Wildness is the preservation of the World.", text: "Thoreau's whole case in one line: wildness is what preserves the world." }],
+    keyidea: [{ sectionIndex: 3, sourceQuote: "Eastward I go only by force; but westward I go free.", text: "When Thoreau set out on a walk, he kept turning west. East he went only by force. West he went free." }],
+    followup: [{ sectionIndex: 5, sourceQuote: "what would become of us, if we walked only in a garden or a mall?", text: "A week on from Walking: Thoreau asks what would become of us if we only ever walked in a garden or a mall." }],
+  };
+  const used: Record<string, number> = {};
+  plan.suggestions = slots.map((s) => {
+    const list = posts[s.role] || posts.teaser;
+    const k = used[s.role] = (used[s.role] ?? -1) + 1;
+    return { ...s, ...list[k % list.length], included: true };
+  });
+}
 const signedIn = process.env.STATE !== "out";
 const withDoc = process.env.STATE !== "nodoc";
 const me = () => ({
   signedIn, org: "My Organization", orgs: [{ id: "o", name: "My Organization" }], organizationId: "o", aiReady: true, google: { ready: true, connected: process.env.GOOGLE === "on" },
-  doc: withDoc ? { title: "[Sample long-form title]", url: "https://docs.google.com/document/d/sample/edit", words: 1840, sections, picked: true, fileId: "sample", modifiedTime: new Date(Date.now() - 2 * 3600e3).toISOString() } : null,
+  doc: withDoc ? { title: docTitle, url: "https://docs.google.com/document/d/sample/edit", words: docWords, sections, picked: true, fileId: "sample", modifiedTime: new Date(Date.now() - 2 * 3600e3).toISOString() } : null,
   plan: withDoc && process.env.STATE !== "noplan" ? plan : null,
   board: withDoc ? { today, rangeStart, rangeEnd, timezone: tz, channels: channels.map((c) => ({ ...c, label: label[c.service], selected: true })), skipped: [], queue: queue.map((x) => ({ ...x, date: localDate(Date.parse(x.dueAt), tz) })) } : null,
   limits: LIMITS,
@@ -47,6 +77,11 @@ http.createServer((req, res) => {
   if (url.pathname === "/app.css") return send("text/css", readFileSync("public/app.css", "utf8"));
   if (url.pathname === "/app.js") return send("text/javascript", readFileSync("public/app.js", "utf8"));
   if (url.pathname === "/favicon.svg") return send("image/svg+xml", readFileSync("public/favicon.svg", "utf8"));
+  const bin = url.pathname.match(/^\/(shots|fonts)\/([\w.-]+\.(webp|woff2))$/);
+  if (bin) {
+    try { const body = readFileSync(`public/${bin[1]}/${bin[2]}`); res.writeHead(200, { "Content-Type": bin[3] === "webp" ? "image/webp" : "font/woff2" }); return res.end(body); }
+    catch { return send("text/plain", "not found", 404); }
+  }
   if (url.pathname === "/api/me") return send("application/json", JSON.stringify(me()));
   if (url.pathname === "/api/publish-day") {
     let raw = ""; req.on("data", (c) => (raw += c)); req.on("end", () => {
@@ -64,5 +99,5 @@ http.createServer((req, res) => {
     return send("application/json", JSON.stringify({ ...me(), saved: 6, failed: 1 }));
   }
   if (url.pathname.startsWith("/api/")) return send("application/json", "{}");
-  send("text/html", appPage("Longform"));
+  send("text/html", appPage("Longform", !signedIn));
 }).listen(Number(process.env.PORT ?? 8788));
