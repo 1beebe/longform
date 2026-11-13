@@ -42,7 +42,7 @@ function shell(name: string, title: string, main: string, opts: { script?: boole
   <span class="r" id="who">${opts.nav ?? ""}</span>
 </header>
 ${main}
-<footer class="foot"><a href="/privacy">Privacy</a><span>Made by L. Beebe, LLC</span><span>Not affiliated with Buffer or Google.</span></footer>
+<footer class="foot"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span>Made by L. Beebe, LLC</span><span>Not affiliated with Buffer or Google.</span></footer>
 ${script ? `<script src="/app.js" defer></script>` : ""}
 </body>
 </html>`;
@@ -66,6 +66,7 @@ function landing(name: string, show: boolean): string {
         <a class="btn ghost" href="#how">See the three steps</a>
       </div>
       <p class="fine">Everything saves to Buffer as a draft. Nothing posts on its own.</p>
+      <p class="fine">By connecting, you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy note</a>.</p>
     </div>
     <figure class="frame l-shot" data-enter style="--d:120ms">
       <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i><span>${n}</span></div>
@@ -146,6 +147,7 @@ function landing(name: string, show: boolean): string {
     <h2 id="l-close-h">Plan the launch of your next piece</h2>
     <p>Sign in with Buffer, then pick your draft. No draft handy? You can try it on a sample piece.</p>
     <a class="btn" href="/connect">Connect Buffer</a>
+    <p class="fine">By connecting, you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy note</a>.</p>
   </div>
 </section>
 </div>`;
@@ -159,17 +161,47 @@ export function appPage(name: string, signedOut = false): string {
 }
 
 export function privacyPage(name: string): string {
+  const n = esc(name);
   return shell(name, `Privacy · ${name}`, `<main class="prose">
 <h1>Privacy</h1>
-<p>${esc(name)} is run by L. Beebe, LLC. It reads your Buffer queue and a Google Doc you choose, suggests posts from your draft, and saves the ones you approve to Buffer as drafts. It never publishes anything.</p>
+<p>Last updated November 13, 2026. ${n} is run by L. Beebe, LLC. It reads your Buffer queue and a draft you choose, suggests posts from your draft, and saves the ones you approve to Buffer as drafts. It never publishes or schedules anything.</p>
 <h2>What it keeps</h2>
-<p>Your Buffer sign-in tokens, the doc's text and your current plan are stored encrypted for up to 30 days so you can come back to the plan. Signing out deletes them. Your queue is read from Buffer each time and isn't stored.</p>
+<p>Your Buffer sign-in tokens, the draft's text and your current plan are stored encrypted for up to 30 days so you can come back to the plan. Signing out deletes them. Your queue is read from Buffer each time and isn't stored. To keep usage fair, your session also holds the times of your AI requests in the last hour, and the app keeps one daily count of AI requests for everyone, with no account attached, which expires after two days.</p>
+<h2>What it does with your Buffer account</h2>
+<p>It reads your account, channels and the next six weeks of scheduled posts and drafts, and it creates dated drafts only for the posts you tick, plus one placeholder draft on publish day. It never publishes, schedules or deletes anything in Buffer.</p>
 <h2>Who sees your draft</h2>
-<p>To suggest posts, the doc's text is sent to an AI model (Anthropic's Claude, reached directly or through MindStudio). It isn't shared with anyone else or sold.</p>
+<p>To suggest posts, the draft's text is sent to an AI model (Anthropic's Claude, reached directly or through MindStudio). The app runs on Cloudflare. Your draft isn't shared with anyone else or sold.</p>
 <h2>Your Google Doc</h2>
-<p>If you connect Google, the app asks only for permission to open files you pick in Google's file picker. It can't see the rest of your Drive, and it never changes the doc. Signing out disconnects Google. You can also paste a link to a doc shared as "anyone with the link can view", or paste the text.</p>
-<h2>Questions</h2>
-<p>Write to L. Beebe, LLC through <a href="https://lbeebe.com">lbeebe.com</a>.</p>
+<p>If you connect Google, the app asks only for permission to open files you pick in Google's file picker. It can't see the rest of your Drive, and it never changes the doc. Signing out disconnects Google. You can also paste a link to a doc shared as "anyone with the link can view", paste the text, or try the sample piece.</p>
+<h2>Questions and deletion</h2>
+<p>Sign out to delete what the app keeps. For anything else, write to L. Beebe, LLC through <a href="https://lbeebe.com">lbeebe.com</a>. See also the <a href="/terms">Terms</a>.</p>
+<p><a href="/">Back to the planner</a></p>
+</main>`, { script: false });
+}
+
+export function termsPage(name: string): string {
+  const n = esc(name);
+  return shell(name, `Terms · ${name}`, `<main class="prose">
+<h1>Terms of use</h1>
+<p>Last updated November 13, 2026. ${n} is run by Ligaya Beebe through L. Beebe, LLC, in Florida. It's built on the Buffer API, but it isn't made by, affiliated with or endorsed by Buffer or Google.</p>
+<h2>Agreeing to these terms</h2>
+<p>By connecting Buffer, you agree to these terms and to the <a href="/privacy">Privacy note</a>, which says what the app keeps and for how long. If you don't agree, don't connect. You need to be 18 or older, or the age of majority where you live.</p>
+<h2>Your writing stays yours</h2>
+<p>You own your draft and the posts made from it. You let the app process your draft only to run the service: to send it to the AI services named on the Privacy note, and to save the posts you choose to your own Buffer account. Only use drafts you have the right to share.</p>
+<h2>AI suggestions are yours to check</h2>
+<p>Suggested posts are AI-assisted. They're limited to summarizing or rephrasing your draft, and they can still get things wrong. Read every post before you publish it. You're responsible for what you publish. The app saves drafts to Buffer and never publishes or schedules anything for you.</p>
+<h2>Using it fairly</h2>
+<p>Don't use the app to break the law, harass anyone, infringe someone else's rights, send spam, or attack or overload the service. Don't try to get around its usage limits. Your use of Buffer, Google and each social network also follows their own terms.</p>
+<h2>Other services</h2>
+<p>The app relies on Buffer, Google, MindStudio and Anthropic, and on Cloudflare to host it. Each has its own terms, and the app can only be as available as they are.</p>
+<h2>No guarantees</h2>
+<p>${n} is free and provided as is, without warranties of any kind. It has usage limits, and it may change, pause or end at any time. Access may be suspended for anyone who misuses it.</p>
+<h2>Limits on liability</h2>
+<p>As far as the law allows, L. Beebe, LLC isn't liable for indirect or consequential losses, lost data or lost profits, or for anything you publish. Its total liability for any claim is limited to fifty US dollars.</p>
+<h2>Changes</h2>
+<p>If these terms change, the date at the top changes too. Using the app after a change means you accept the new terms.</p>
+<h2>Law and contact</h2>
+<p>These terms are governed by the laws of Florida, USA. For questions, write to L. Beebe, LLC through <a href="https://lbeebe.com">lbeebe.com</a>.</p>
 <p><a href="/">Back to the planner</a></p>
 </main>`, { script: false });
 }
