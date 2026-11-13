@@ -12,9 +12,10 @@ APP_NAME = "Longform"
 APP_URL = "https://longform.lbeebe.com"
 BUFFER_CLIENT_ID = "nFe0ZKJq2xTJd2BuizulbqRkuQ2zZG-i7_ijnrace06"
 
+# longform-sessions
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "SET_ME_NEW_KV_NAMESPACE_ID"
+id = "dd97f2970bd04760bfd50aff8c5ecef4"
 
 [observability]
 enabled = true
