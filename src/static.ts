@@ -6,6 +6,10 @@ import js from "../public/app.js";
 import icon from "../public/favicon.svg";
 // @ts-ignore bundled as binary (Data) by the wrangler.toml rule
 import font from "../public/fonts/instrument-sans.woff2";
+// @ts-ignore
+import ogImage from "../public/og.jpg";
+// @ts-ignore
+import touchIcon from "../public/apple-touch-icon.png";
 // Real screens of the app (preview fixtures with a public-domain draft), for the landing page.
 // @ts-ignore
 import calendar from "../public/shots/calendar.webp";
@@ -31,6 +35,8 @@ export const STATIC: Record<string, File> = {
   "/app.css": { body: css as string, type: "text/css; charset=utf-8" },
   "/app.js": { body: js as string, type: "text/javascript; charset=utf-8" },
   "/favicon.svg": { body: icon as string, type: "image/svg+xml" },
+  "/og.jpg": { body: ogImage as ArrayBuffer, type: "image/jpeg", immutable: true },
+  "/apple-touch-icon.png": { body: touchIcon as ArrayBuffer, type: "image/png", immutable: true },
   "/fonts/instrument-sans.woff2": { body: font as ArrayBuffer, type: "font/woff2", immutable: true },
   "/shots/calendar.webp": webp(calendar),
   "/shots/agenda.webp": webp(agenda),
