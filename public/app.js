@@ -13,6 +13,10 @@
   const COLORS = { linkedin: "#2f5f8f", twitter: "#2b2b2b", threads: "#6b4a8a", instagram: "#b04a6a", bluesky: "#1d7bd8", mastodon: "#5b4bd6", facebook: "#3b5bb5", substack: "#e0691a" };
   const ROLE = { teaser: "Teaser", launch: "Launch post", pullquote: "Pull-quote", keyidea: "Key idea", followup: "Follow-up" };
   const ROLE_SHORT = { teaser: "teaser", launch: "launch", pullquote: "pull-quote", keyidea: "key idea", followup: "follow-up" };
+  // Where saved drafts show up in Buffer: the Drafts tab of Publish, and the calendar.
+  const BUFFER_DRAFTS = "https://publish.buffer.com/schedule?tab=drafts";
+  const BUFFER_CALENDAR = "https://publish.buffer.com/calendar";
+  const toBuffer = (label, cls, href = BUFFER_DRAFTS) => h("a", { class: cls, href, target: "_blank", rel: "noopener" }, label, h("span", { "aria-hidden": "true" }, " ↗"), h("span", { class: "sr" }, " (opens Buffer in a new tab)"));
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const ERRORS = {
@@ -159,6 +163,7 @@
       who.append(h("select", { class: "pill", "aria-label": "Buffer organization", onchange: async (e) => { await call("/api/org", { id: e.target.value }); await load(); } },
         me.orgs.map((o) => h("option", { value: o.id, selected: o.id === me.organizationId }, o.name))));
     }
+    who.append(toBuffer("Your Buffer drafts", "linkish"));
     const form = h("form", { method: "post", action: "/logout" }, h("button", { class: "linkish", type: "submit" }, "Sign out"));
     who.append(form);
   }
@@ -466,7 +471,7 @@
       h("label", { class: "hint", for: "ph-ch" }, "Save it on"),
       h("select", { id: "ph-ch", disabled: saved, onchange: (e) => { ui.placeholder = { ...(ui.placeholder || {}), channelId: e.target.value }; render(); } },
         b.channels.map((c) => h("option", { value: c.id, selected: c.id === ph.channelId }, `${c.name} · ${c.label}`))),
-      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer") : null,
+      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer · ", toBuffer("See it", "linkish")) : null,
       ph.error ? h("p", { class: "err" }, ph.error) : null);
   }
 
@@ -510,7 +515,8 @@
       } }, askInput, h("button", { class: "pill on", type: "submit", disabled: busy }, busy ? "Working…" : "Change it")) : null,
       moving ? h("div", { class: "ask" }, h("input", { type: "date", "aria-label": "New date", value: c.date, min: addDays(me.board.today, 1), max: me.board.rangeEnd,
         onchange: (e) => { if (e.target.value) { edit(c.slot, { date: e.target.value }); ui.move = null; render(); } } })) : null,
-      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer as a draft") : null,
+      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer as a draft · ", toBuffer("See it", "linkish")) : null,
+      !saved && c.included !== false && me.board && c.date <= me.board.today ? h("p", { class: "err" }, "This date has passed. Move it to a day from tomorrow on, or untick it.") : null,
       c.error ? h("p", { class: "err" }, c.error) : null);
   }
 
@@ -531,17 +537,20 @@
       h("span", { class: "t" }, summary),
       h("span", { class: "sp" }),
       me.doc.url ? h("a", { class: "ghost", href: me.doc.url, target: "_blank", rel: "noopener" }, "Open the doc") : null,
-      h("button", { class: "btn", disabled: !t.total || saving, onclick: save }, saving ? "Saving…" : `Save ${t.total} draft${t.total === 1 ? "" : "s"} to Buffer`)));
+      t.total
+        ? h("button", { class: "btn", disabled: saving, onclick: save }, saving ? "Saving…" : `Save ${t.total} draft${t.total === 1 ? "" : "s"} to Buffer`)
+        : toBuffer("See your drafts in Buffer", "btn")));
   }
 
   function doneCard() {
     const s = ui.justSaved;
-    return h("section", { class: "card done", role: "status" },
+    return h("section", { class: "card done-card", role: "status" },
       h("div", { class: "tick", "aria-hidden": "true" }, s.failed ? "!" : "✓"),
       h("h2", null, s.failed ? `Saved ${s.saved}, ${s.failed} didn't go through` : `Saved ${s.saved} draft${s.saved === 1 ? "" : "s"} to Buffer`),
-      h("p", null, s.failed ? "The ones that didn't save say why on their card. Fix them and save again." : "They're on their dates in your Buffer calendar as drafts. Nothing posts until you approve it there."),
+      h("p", null, s.failed ? "The ones that didn't save say why on their card. Fix them and save again." : "They're in Buffer as drafts on their dates. Nothing posts until you approve it there."),
       h("div", { class: "row" },
-        h("a", { class: "btn", href: "https://publish.buffer.com/calendar", target: "_blank", rel: "noopener" }, "Open Buffer"),
+        s.saved ? toBuffer("See your drafts in Buffer", "btn") : null,
+        s.saved ? toBuffer("Open the Buffer calendar", "btn ghost", BUFFER_CALENDAR) : null,
         h("button", { class: "pill", onclick: async () => { if (!confirm("Start over with a new doc? The drafts in Buffer stay where they are.")) return; await call("/api/reset", {}); me.doc = null; me.plan = null; ui.edits = {}; ui.justSaved = null; render(); } }, "Plan another piece")));
   }
 
@@ -557,7 +566,7 @@
     } catch (e) { ui.error = e.message; }
     ui.busy = "";
     render();
-    const done = document.querySelector(".done, .banner");
+    const done = document.querySelector(".done-card, .banner");
     if (done) done.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
