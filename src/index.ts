@@ -275,7 +275,7 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
         if (!hasModel(env)) throw new UserError("The AI step isn't set up on this server yet.", 503);
         const b = await board(client, s);
         if (!b.channels.length) throw new UserError("None of your Buffer channels take text posts. Connect LinkedIn, X, Threads, Bluesky, Mastodon or Facebook in Buffer first.");
-        reserveModel(s, 2);
+        reserveModel(s, 4); // write, check, retry, check
         await save();
         const busy = busyByDay(b.queue, b.timezone);
         const publishDate = pickPublishDay(busy, b.today);
@@ -324,7 +324,7 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
         const instruction = typeof b.instruction === "string" ? b.instruction.trim().slice(0, 300) : "";
         if (instruction.length < 3) throw new UserError("Say what you'd like changed.");
         const current = typeof b.text === "string" && b.text.trim() ? { ...card, text: b.text.slice(0, 3000) } : card;
-        reserveModel(s, 1);
+        reserveModel(s, 2); // write and check
         await save();
         const next = await revise(env, s.doc, current, instruction);
         Object.assign(card, next);
