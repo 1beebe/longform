@@ -34,8 +34,8 @@ let plan: any = {
 const signedIn = process.env.STATE !== "out";
 const withDoc = process.env.STATE !== "nodoc";
 const me = () => ({
-  signedIn, org: "My Organization", orgs: [{ id: "o", name: "My Organization" }], organizationId: "o", aiReady: true,
-  doc: withDoc ? { title: "[Sample long-form title]", url: "https://docs.google.com/document/d/sample/edit", words: 1840, sections } : null,
+  signedIn, org: "My Organization", orgs: [{ id: "o", name: "My Organization" }], organizationId: "o", aiReady: true, google: { ready: true, connected: process.env.GOOGLE === "on" },
+  doc: withDoc ? { title: "[Sample long-form title]", url: "https://docs.google.com/document/d/sample/edit", words: 1840, sections, picked: true, fileId: "sample", modifiedTime: new Date(Date.now() - 2 * 3600e3).toISOString() } : null,
   plan: withDoc && process.env.STATE !== "noplan" ? plan : null,
   board: withDoc ? { today, rangeStart, rangeEnd, timezone: tz, channels: channels.map((c) => ({ ...c, label: label[c.service], selected: true })), skipped: [], queue: queue.map((x) => ({ ...x, date: localDate(Date.parse(x.dueAt), tz) })) } : null,
   limits: LIMITS,

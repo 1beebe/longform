@@ -15,6 +15,10 @@
     state: "That sign-in link expired or came from another browser. Try again.",
     expired: "That sign-in took too long. Try again.",
     signin: "Buffer didn't finish the sign-in. Try again.",
+    "google-off": "Google sign-in isn't switched on yet. Use a share link for now.",
+    "google-denied": "Google sign-in was cancelled.",
+    "google-scope": "Google didn't give access to pick files. Connect again and leave the Drive box ticked.",
+    google: "Google didn't finish the sign-in. Try again.",
   };
 
   let me = null; // the server's view: doc, plan, board
@@ -45,6 +49,7 @@
     const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     let data = {};
     try { data = await res.json(); } catch { /* empty */ }
+    if (res.status === 401 && data.google && me) { me.google = { ...(me.google || {}), connected: false }; }
     if (res.status === 401 && data.reconnect) { me = { signedIn: false }; ui.error = data.error || ""; render(); throw new Error("signed out"); }
     if (!res.ok) throw new Error(data.error || "Something went wrong. Try again.");
     return data;
@@ -61,6 +66,66 @@
     return { ...p, ...(p.bufferId ? {} : ui.placeholder || {}) };
   }
   const edit = (slot, patch) => { ui.edits[slot] = { ...(ui.edits[slot] || {}), ...patch }; };
+
+  // ---- Google Drive picker ----
+  let gapiLoaded = null;
+  function loadPicker() {
+    if (gapiLoaded) return gapiLoaded;
+    gapiLoaded = new Promise((resolve, reject) => {
+      const tag = document.createElement("script");
+      tag.src = "https://apis.google.com/js/api.js";
+      tag.onload = () => window.gapi.load("picker", { callback: resolve, onerror: reject });
+      tag.onerror = () => { gapiLoaded = null; reject(new Error("Google's file picker didn't load. Check your connection and try again.")); };
+      document.head.append(tag);
+    });
+    return gapiLoaded;
+  }
+
+  async function useDoc(payload) {
+    ui.busy = "doc"; ui.error = ""; render();
+    try { await call("/api/doc", payload); ui.busy = ""; ui.edits = {}; ui.justSaved = null; await load(); suggestIfReady(); }
+    catch (e) { ui.busy = ""; ui.error = e.message; render(); }
+  }
+
+  async function openPicker() {
+    ui.error = "";
+    try {
+      const t = await call("/api/google/token", {});
+      await loadPicker();
+      const g = window.google.picker;
+      const view = new g.DocsView(g.ViewId.DOCUMENTS).setMode(g.DocsViewMode.LIST).setIncludeFolders(false);
+      new g.PickerBuilder()
+        .addView(view)
+        .setOAuthToken(t.accessToken)
+        .setDeveloperKey(t.pickerKey)
+        .setAppId(t.appId)
+        .setOrigin(location.origin)
+        .setTitle("Choose your draft")
+        .setCallback((data) => {
+          if (data.action === g.Action.PICKED && data.docs && data.docs[0]) useDoc({ fileId: data.docs[0].id });
+        })
+        .build()
+        .setVisible(true);
+    } catch (e) { ui.error = e.message; render(); }
+  }
+
+  function googleButton(label) {
+    if (!me.google || !me.google.ready) return null;
+    return me.google.connected
+      ? h("button", { class: "btn", type: "button", disabled: ui.busy === "doc", onclick: openPicker }, ui.busy === "doc" ? "Reading…" : label || "Choose from Google Drive")
+      : h("a", { class: "btn", href: "/google/connect" }, "Connect Google Docs");
+  }
+
+  const ago = (iso) => {
+    const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+    if (!(m >= 0)) return "";
+    if (m < 2) return "edited just now";
+    if (m < 60) return `edited ${m} minutes ago`;
+    const hrs = Math.round(m / 60);
+    if (hrs < 24) return `edited ${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+    const d = Math.round(hrs / 24);
+    return `edited ${d} day${d === 1 ? "" : "s"} ago`;
+  };
 
   // ---- screens ----
   function render() {
@@ -111,22 +176,26 @@
     const url = h("input", { class: "field", type: "url", placeholder: "https://docs.google.com/document/d/…", "aria-label": "Google Doc link", "data-key": "doc-url" });
     const title = h("input", { class: "field", type: "text", placeholder: "Title (optional)", "aria-label": "Title" });
     const text = h("textarea", { class: "field", placeholder: "Paste the whole draft. Lines starting with # become sections.", "aria-label": "Draft text" });
-    const go = async (payload) => {
-      ui.busy = "doc"; ui.error = ""; render();
-      try { await call("/api/doc", payload); ui.busy = ""; await load(); suggestIfReady(); }
-      catch (e) { ui.busy = ""; ui.error = e.message; render(); }
-    };
+    const google = me.google && me.google.ready;
+    const linkForm = h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); useDoc({ url: url.value }); } },
+      url, h("button", { class: google ? "btn dark" : "btn", type: "submit", disabled: ui.busy === "doc" }, ui.busy === "doc" && !google ? "Reading…" : "Use this doc"));
+    const linkHelp = h("p", null, "In Google Docs, click Share and set General access to \u201cAnyone with the link can view.\u201d Then copy the link and paste it here.");
     app.append(
       h("h1", null, "Plan your long-form"),
       h("p", { class: "lead" }, `Connected to Buffer${me.org ? ` (${me.org})` : ""}. Now the draft.`),
       ...banners(),
       h("section", { class: "card pick" },
         h("h2", null, "Choose your Google Doc"),
-        h("p", null, "In Google Docs, click Share and set General access to “Anyone with the link can view.” Then copy the link and paste it here."),
-        h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); go({ url: url.value }); } },
-          url, h("button", { class: "btn", type: "submit", disabled: ui.busy === "doc" }, ui.busy === "doc" ? "Reading…" : "Use this doc")),
+        google
+          ? [h("p", null, me.google.connected
+              ? "Pick the draft from your Drive. The app can open only the doc you pick, and it never changes it."
+              : "Connect Google, then pick the draft from your Drive. The app can open only the doc you pick, and it never changes it."),
+            h("div", { class: "row" }, googleButton()),
+            me.google.connected ? h("p", { class: "hint" }, h("button", { class: "linkish", onclick: async () => { await call("/api/google/disconnect", {}); await load(); } }, "Disconnect Google")) : null,
+            h("details", null, h("summary", null, "Use a share link instead"), linkHelp, linkForm)]
+          : [linkHelp, linkForm],
         h("details", null, h("summary", null, "Paste the text instead"),
-          h("form", { onsubmit: (e) => { e.preventDefault(); go({ text: text.value, title: title.value }); } },
+          h("form", { onsubmit: (e) => { e.preventDefault(); useDoc({ text: text.value, title: title.value }); } },
             h("div", { class: "row" }, title), h("div", { class: "row" }, text),
             h("div", { class: "row" }, h("button", { class: "btn dark", type: "submit", disabled: ui.busy === "doc" }, "Use this text")))),
       ),
@@ -158,9 +227,13 @@
       h("div", { class: "ic g" }, "G"),
       h("div", { class: "body" },
         h("h3", null, d.title),
-        h("p", null, `${d.url ? "Google Doc" : "Pasted draft"} · ${d.words.toLocaleString()} words`),
-        h("div", { class: "meta" }, d.url && h("span", { class: "chip ok" }, "Read from your link"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
-      h("button", { class: "linkish act", onclick: async () => { if (!confirm("Change the doc? This clears the current plan.")) return; me.doc = null; me.plan = null; ui.edits = {}; render(); } }, "Change doc"),
+        h("p", null, [d.url ? "Google Doc" : "Pasted draft", d.modifiedTime ? ago(d.modifiedTime) : "", `${d.words.toLocaleString()} words`].filter(Boolean).join(" · ")),
+        h("div", { class: "meta" }, d.url && h("span", { class: "chip ok" }, d.picked ? "Connected to Google" : "Read from your link"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
+      h("div", { class: "act" },
+        d.picked && me.google && me.google.connected
+          ? h("button", { class: "linkish", onclick: () => { if (!me.plan || confirm("Pick another doc? This clears the current plan.")) openPicker(); } }, ui.busy === "doc" ? "Reading…" : "Change doc")
+          : h("button", { class: "linkish", onclick: () => { if (me.plan && !confirm("Change the doc? This clears the current plan.")) return; me.doc = null; me.plan = null; ui.edits = {}; render(); } }, "Change doc"),
+        d.picked && me.google && me.google.connected ? [" · ", h("button", { class: "linkish", title: "Read the doc again from Google", onclick: () => { if (!me.plan || confirm("Read the doc again? This clears the current plan.")) useDoc({ fileId: d.fileId || "" }); } }, "Refresh")] : null),
     );
     const bufCard = h("div", { class: "src" },
       h("div", { class: "ic b" }, "B"),
@@ -469,5 +542,7 @@
 
   const q = new URLSearchParams(location.search);
   if (q.get("error")) { ui.error = ERRORS[q.get("error")] || "Sign-in didn't work. Try again."; history.replaceState(null, "", "/"); }
-  load().then(suggestIfReady);
+  const pickNow = q.get("pick") === "1";
+  if (pickNow) history.replaceState(null, "", "/");
+  load().then(() => { if (pickNow && me && me.google && me.google.connected && !me.doc) openPicker(); else suggestIfReady(); });
 })();

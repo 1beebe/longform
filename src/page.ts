@@ -38,7 +38,7 @@ export function privacyPage(name: string): string {
 <h2>Who sees your draft</h2>
 <p>To suggest posts, the doc's text is sent to an AI model (Anthropic's Claude, reached directly or through MindStudio). It isn't shared with anyone else or sold.</p>
 <h2>Your Google Doc</h2>
-<p>The app reads a doc only from a link you paste, and only if the doc is shared as "anyone with the link can view". It can't see your other files, and it never changes the doc.</p>
+<p>If you connect Google, the app asks only for permission to open files you pick in Google's file picker. It can't see the rest of your Drive, and it never changes the doc. Signing out disconnects Google. You can also paste a link to a doc shared as "anyone with the link can view", or paste the text.</p>
 <h2>Questions</h2>
 <p>Write to L. Beebe, LLC through <a href="https://lbeebe.com">lbeebe.com</a>.</p>
 <p><a href="/">Back to the planner</a></p>
