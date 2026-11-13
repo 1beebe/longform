@@ -28,7 +28,7 @@ const SECURITY: Record<string, string> = {
   "Content-Security-Policy":
     "default-src 'self'; script-src 'self' https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com https://*.gstatic.com; connect-src 'self' https://*.googleapis.com; frame-src https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://auth.buffer.com",
   "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "same-origin",
+  "Referrer-Policy": "strict-origin-when-cross-origin", // origin only, so Google can match the picker key's website restriction
 };
 const headers = (extra: Record<string, string> = {}) => new Headers({ ...SECURITY, ...extra });
 const html = (body: string, status = 200) => new Response(body, { status, headers: headers({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }) });
