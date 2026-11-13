@@ -13,9 +13,14 @@
   const COLORS = { linkedin: "#2f5f8f", twitter: "#2b2b2b", threads: "#6b4a8a", instagram: "#b04a6a", bluesky: "#1d7bd8", mastodon: "#5b4bd6", facebook: "#3b5bb5", substack: "#e0691a" };
   const ROLE = { teaser: "Teaser", launch: "Launch post", pullquote: "Pull-quote", keyidea: "Key idea", followup: "Follow-up" };
   const ROLE_SHORT = { teaser: "teaser", launch: "launch", pullquote: "pull-quote", keyidea: "key idea", followup: "follow-up" };
-  // Where saved drafts show up in Buffer: the Drafts tab of Publish, and the calendar.
+  // Unfiltered drafts. This tab opens on Unscheduled, so dated drafts sit
+  // further down. Used for the header link only.
   const BUFFER_DRAFTS = "https://publish.buffer.com/schedule?tab=drafts";
   const BUFFER_CALENDAR = "https://publish.buffer.com/calendar";
+  // Channel drafts: clicking that channel in Buffer's sidebar, then Drafts.
+  // Same path shape as /schedule?tab=drafts, confirmed on publish.buffer.com
+  // through 2026 (see channelDraftsUrl in src/saved.ts).
+  const draftsUrl = (channelId) => `https://publish.buffer.com/channels/${encodeURIComponent(channelId)}/schedule?tab=drafts`;
   const toBuffer = (label, cls, href = BUFFER_DRAFTS) => h("a", { class: cls, href, target: "_blank", rel: "noopener" }, label, h("span", { "aria-hidden": "true" }, " ↗"), h("span", { class: "sr" }, " (opens Buffer in a new tab)"));
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -151,8 +156,12 @@
     if (out) landing();
     else if (!me.doc) chooseDoc();
     else planner();
-    if (focus) { const el = app.querySelector(`[data-key="${focus}"]`); if (el) el.focus(); }
-    window.scrollTo(0, scrollY);
+    if (focus) { const el = app.querySelector(`[data-key="${focus}"]`); if (el) el.focus({ preventScroll: true }); }
+    // Replacing the page clamps the scroll to the top. Put it back after layout,
+    // instantly, so a save doesn't slide the bar out from under the cursor.
+    const restore = () => window.scrollTo({ top: scrollY, left: 0, behavior: "instant" });
+    restore();
+    requestAnimationFrame(() => { restore(); requestAnimationFrame(restore); });
   }
 
   function renderWho() {
@@ -237,7 +246,6 @@
     if (!b) return;
     app.append(h("section", { class: "grid" }, calendarCard(b, p), side(b, p)));
     if (p) {
-      if (ui.justSaved) app.append(doneCard());
       app.append(postsSection(b, p));
       dock(p);
     }
@@ -470,12 +478,12 @@
       h("div", { class: "inc" },
         h("input", { type: "checkbox", id: "inc-ph", checked: ph.included, disabled: saved, onchange: (e) => { ui.placeholder = { ...(ui.placeholder || {}), included: e.target.checked }; render(); } }),
         h("label", { for: "inc-ph" }, "Include"), h("span", { class: "when" }, `${longish(p.publishDate)} ★`)),
-      h("div", { class: "for" }, ch && dot(ch.service), "Publish-day placeholder"),
+      h("div", { class: "for" }, ch && dot(ch.service), ch ? `Publish-day placeholder · ${ch.name} · ${ch.label}` : "Publish-day placeholder"),
       h("div", { class: "from" }, "You publish the piece by hand. This dated draft holds its place in your Buffer calendar and links back to the doc."),
       h("label", { class: "hint", for: "ph-ch" }, "Save it on"),
       h("select", { id: "ph-ch", disabled: saved, onchange: (e) => { ui.placeholder = { ...(ui.placeholder || {}), channelId: e.target.value }; render(); } },
         b.channels.map((c) => h("option", { value: c.id, selected: c.id === ph.channelId }, `${c.name} · ${c.label}`))),
-      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer · ", toBuffer("See it", "linkish")) : null,
+      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer · ", toBuffer("See it", "linkish", draftsUrl(ph.channelId))) : null,
       ph.error ? h("p", { class: "err" }, ph.error) : null);
   }
 
@@ -484,7 +492,8 @@
     const limit = (me.limits || {})[c.service] || 500;
     const section = me.doc.sections.find((s) => s.index === c.sectionIndex);
     const counter = h("p", { class: `count${c.text.length > limit ? " over" : ""}` }, `${c.text.length} / ${limit}`);
-    const area = h("textarea", { "aria-label": `${ROLE[c.role]} for ${label(c.service)}`, "data-key": `t${c.slot}`, readonly: saved, value: c.text,
+    const dest = channelDest(c.channelId, c.channelName, c.service);
+    const area = h("textarea", { "aria-label": `${ROLE[c.role]} for ${dest}`, "data-key": `t${c.slot}`, readonly: saved, value: c.text,
       oninput: (e) => { edit(c.slot, { text: e.target.value }); counter.textContent = `${e.target.value.length} / ${limit}`; counter.className = `count${e.target.value.length > limit ? " over" : ""}`; } });
     const tools = [];
     if (!saved) {
@@ -500,7 +509,7 @@
         h("input", { type: "checkbox", id: `inc${c.slot}`, checked: c.included !== false, disabled: saved, onchange: (e) => { edit(c.slot, { included: e.target.checked }); render(); } }),
         h("label", { for: `inc${c.slot}` }, "Include"),
         h("span", { class: "when" }, longish(c.date) + (c.date === p.publishDate ? " ★" : ""))),
-      h("div", { class: "for" }, dot(c.service), `For ${label(c.service)} · ${ROLE[c.role]}`),
+      h("div", { class: "for" }, dot(c.service), `For ${dest} · ${ROLE[c.role]}`),
       h("div", { class: "from" }, h("b", null, c.sectionIndex ? `From section ${c.sectionIndex}${section ? ` · ${section.heading}` : ""}` : "From your whole draft"), `“${c.sourceQuote}”`),
       area, counter,
       c.role === "launch" && c.text.includes("[link]") ? h("p", { class: "hint" }, "Swap [link] for the piece's link once it's live, here or in Buffer.") : null,
@@ -519,7 +528,7 @@
       } }, askInput, h("button", { class: "pill on", type: "submit", disabled: busy }, busy ? "Working…" : "Change it")) : null,
       moving ? h("div", { class: "ask" }, h("input", { type: "date", "aria-label": "New date", value: c.date, min: addDays(me.board.today, 1), max: me.board.rangeEnd,
         onchange: (e) => { if (e.target.value) { edit(c.slot, { date: e.target.value }); ui.move = null; render(); } } })) : null,
-      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer as a draft · ", toBuffer("See it", "linkish")) : null,
+      saved ? h("p", { class: "ok" }, "✓ Saved to Buffer as a draft · ", toBuffer("See it", "linkish", draftsUrl(c.channelId))) : null,
       !saved && c.included !== false && me.board && c.date <= me.board.today ? h("p", { class: "err" }, "This date has passed. Move it to a day from tomorrow on, or untick it.") : null,
       c.error ? h("p", { class: "err" }, c.error) : null);
   }
@@ -533,29 +542,92 @@
     return { posts: list.length, total: list.length + (ph.included && !ph.bufferId ? 1 : 0), first: dates[0], last: dates[dates.length - 1] };
   }
 
+  // Channel name plus service, from the live board when we have it.
+  function channelDest(channelId, fallbackName, service) {
+    const ch = me.board && me.board.channels.find((c) => c.id === channelId);
+    const name = (ch && ch.name) || fallbackName || "";
+    const svc = (ch && ch.label) || label(service);
+    return name ? `${name} · ${svc}` : svc;
+  }
+
+  // One link per channel the drafts were saved to. Prefer the createPost
+  // payload from this save; otherwise the channels already on the plan.
+  function linkTargets() {
+    const drafts = ui.justSaved && ui.justSaved.drafts;
+    if (drafts && drafts.length) {
+      const seen = new Set();
+      const out = [];
+      for (const d of drafts) {
+        if (!d.channelId || seen.has(d.channelId)) continue;
+        seen.add(d.channelId);
+        out.push(d);
+      }
+      return out;
+    }
+    if (!me || !me.plan || !me.board) return [];
+    const seen = new Set();
+    const out = [];
+    const add = (channelId) => {
+      if (!channelId || seen.has(channelId)) return;
+      seen.add(channelId);
+      const ch = me.board.channels.find((c) => c.id === channelId);
+      out.push({ channelId, href: draftsUrl(channelId), serviceLabel: (ch && ch.label) || label(ch ? ch.service : ""), channelName: (ch && ch.name) || "" });
+    };
+    for (const s of me.plan.suggestions) if (s.bufferId) add(s.channelId);
+    if (me.plan.placeholder && me.plan.placeholder.bufferId) add(me.plan.placeholder.channelId);
+    return out;
+  }
+
+  function bufferAction() {
+    const links = linkTargets();
+    if (links.length === 1) return toBuffer("See your drafts in Buffer", "btn", links[0].href);
+    if (links.length > 1) return h("div", { class: "chan-links" }, links.map((l) => toBuffer(l.channelName ? `${l.serviceLabel} · ${l.channelName}` : l.serviceLabel || "See drafts", "btn", l.href)));
+    return toBuffer("See your drafts in Buffer", "btn");
+  }
+
+  function startOver() {
+    return async () => {
+      if (!confirm("Start over with a new doc? The drafts in Buffer stay where they are.")) return;
+      await call("/api/reset", {});
+      me.doc = null;
+      me.plan = null;
+      ui.edits = {};
+      ui.justSaved = null;
+      render();
+    };
+  }
+
+  // Floats above the save bar so the bar itself does not move under the cursor.
+  function savedPanel(s) {
+    const n = s.saved;
+    const drafts = s.drafts || [];
+    // When drafts remain, the dock keeps the Save button. Offer the channel
+    // links here. When everything is saved, those links replace the button.
+    const links = ticked().total ? linkTargets() : [];
+    return h("section", { class: "card saved-panel", role: "status" },
+      h("h2", null, s.failed ? `Saved ${n}, ${s.failed} didn't go through` : `Saved ${n} draft${n === 1 ? "" : "s"} to Buffer`),
+      s.failed ? h("p", null, "The ones that didn't save say why on their card. Fix them and save again.") : null,
+      n ? h("p", { class: "hint" }, "In Buffer they appear under their dates, not under Unscheduled.") : null,
+      drafts.length ? h("ul", { class: "saved-list" }, drafts.map((d) => h("li", null, d.line))) : null,
+      h("div", { class: "row" },
+        links.map((l) => toBuffer(l.channelName ? `${l.serviceLabel} · ${l.channelName}` : (l.serviceLabel || "See drafts"), "btn", l.href)),
+        n ? toBuffer("Open the Buffer calendar", "btn ghost", BUFFER_CALENDAR) : null,
+        h("button", { class: "pill", type: "button", onclick: startOver() }, "Plan another piece")));
+  }
+
   function dock(p) {
     const t = ticked();
     const saving = ui.busy === "save";
     const summary = t.total ? `${t.posts} post${t.posts === 1 ? "" : "s"}${placeholder().included && !placeholder().bufferId ? " and the placeholder" : ""} ticked, ${short(t.first)} to ${short(t.last)}` : "Everything ticked is saved";
-    dockSlot.append(h("div", { class: "dock" },
-      h("span", { class: "t" }, summary),
-      h("span", { class: "sp" }),
-      me.doc.url ? h("a", { class: "ghost", href: me.doc.url, target: "_blank", rel: "noopener" }, "Open the doc") : null,
-      t.total
-        ? h("button", { class: "btn", disabled: saving, onclick: save }, saving ? "Saving…" : `Save ${t.total} draft${t.total === 1 ? "" : "s"} to Buffer`)
-        : toBuffer("See your drafts in Buffer", "btn")));
-  }
-
-  function doneCard() {
-    const s = ui.justSaved;
-    return h("section", { class: "card done-card", role: "status" },
-      h("div", { class: "tick", "aria-hidden": "true" }, s.failed ? "!" : "✓"),
-      h("h2", null, s.failed ? `Saved ${s.saved}, ${s.failed} didn't go through` : `Saved ${s.saved} draft${s.saved === 1 ? "" : "s"} to Buffer`),
-      h("p", null, s.failed ? "The ones that didn't save say why on their card. Fix them and save again." : "They're in Buffer as drafts on their dates. Nothing posts until you approve it there."),
-      h("div", { class: "row" },
-        s.saved ? toBuffer("See your drafts in Buffer", "btn") : null,
-        s.saved ? toBuffer("Open the Buffer calendar", "btn ghost", BUFFER_CALENDAR) : null,
-        h("button", { class: "pill", onclick: async () => { if (!confirm("Start over with a new doc? The drafts in Buffer stay where they are.")) return; await call("/api/reset", {}); me.doc = null; me.plan = null; ui.edits = {}; ui.justSaved = null; render(); } }, "Plan another piece")));
+    dockSlot.append(h("div", { class: "dock-wrap" },
+      ui.justSaved ? savedPanel(ui.justSaved) : null,
+      h("div", { class: "dock" },
+        h("span", { class: "t" }, summary),
+        h("span", { class: "sp" }),
+        me.doc.url ? h("a", { class: "ghost", href: me.doc.url, target: "_blank", rel: "noopener" }, "Open the doc") : null,
+        t.total
+          ? h("button", { class: "btn", type: "button", disabled: saving, onclick: save }, saving ? "Saving…" : `Save ${t.total} draft${t.total === 1 ? "" : "s"} to Buffer`)
+          : bufferAction())));
   }
 
   async function save() {
@@ -566,12 +638,10 @@
       me = { ...me, ...r };
       ui.edits = {};
       ui.placeholder = null;
-      ui.justSaved = { saved: r.saved, failed: r.failed };
+      ui.justSaved = { saved: r.saved, failed: r.failed, drafts: r.savedDrafts || [] };
     } catch (e) { ui.error = e.message; }
     ui.busy = "";
     render();
-    const done = document.querySelector(".done-card, .banner");
-    if (done) done.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   async function runSuggest() {

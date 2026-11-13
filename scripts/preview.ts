@@ -3,8 +3,10 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import { appPage } from "../src/page";
 import { busyByDay, pickPublishDay, place, reasonFor, placeholderChannel } from "../src/plan";
-import { addDays, localDate, mondayOf } from "../src/time";
+import { addDays, localDate, mondayOf, zonedIso } from "../src/time";
 import { LIMITS } from "../src/guard";
+import { orderSavedDrafts, toSavedDraft, type CreatedPost } from "../src/saved";
+import { serviceName } from "../src/suggest";
 
 const tz = "America/New_York";
 const today = localDate(Date.now(), tz);
@@ -16,7 +18,6 @@ const channels = [
   { id: "th", service: "threads", name: "samplewriter" },
   { id: "ss", service: "substack", name: "Sample Notes" },
 ];
-const label: Record<string, string> = { linkedin: "LinkedIn", twitter: "X", threads: "Threads", substack: "Substack" };
 const q = (n: number, ch: string, t: string) => ({ id: `${n}${ch}`, channelId: ch, dueAt: `${addDays(today, n)}T15:00:00.000Z`, status: "scheduled", text: t });
 const queue = [q(1, "li", "[Queued post]"), q(2, "x", "[Queued post]"), q(4, "li", "[Queued post]"), q(5, "th", "[Queued post]"), q(6, "x", "[Queued post]"), q(8, "li", "[Queued post]"), q(9, "th", "[Queued post]"), q(13, "x", "[Queued post]"), q(21, "li", "[Queued post]"), q(22, "x", "[Queued post]"), q(25, "li", "[Queued post]")];
 const busy = busyByDay(queue, tz);
@@ -67,7 +68,7 @@ const me = () => ({
   signedIn, org: "My Organization", orgs: [{ id: "o", name: "My Organization" }], organizationId: "o", aiReady: true, google: { ready: true, connected: process.env.GOOGLE === "on" },
   doc: withDoc ? { title: docTitle, url: "https://docs.google.com/document/d/sample/edit", words: docWords, sections, picked: true, fileId: "sample", modifiedTime: new Date(Date.now() - 2 * 3600e3).toISOString() } : null,
   plan: withDoc && process.env.STATE !== "noplan" ? plan : null,
-  board: withDoc ? { today, rangeStart, rangeEnd, timezone: tz, channels: channels.map((c) => ({ ...c, label: label[c.service], selected: true })), skipped: [], queue: queue.map((x) => ({ ...x, date: localDate(Date.parse(x.dueAt), tz) })) } : null,
+  board: withDoc ? { today, rangeStart, rangeEnd, timezone: tz, channels: channels.map((c) => ({ ...c, label: serviceName(c.service), selected: true })), skipped: [], queue: queue.map((x) => ({ ...x, date: localDate(Date.parse(x.dueAt), tz) })) } : null,
   limits: LIMITS,
 });
 
@@ -94,9 +95,36 @@ http.createServer((req, res) => {
     return;
   }
   if (url.pathname === "/api/save") {
-    plan.suggestions.forEach((s: any, i: number) => { if (i < 5) s.bufferId = `b${i}`; else s.error = "Buffer API: sample error for the preview"; });
+    // Same shape createPost returns: id, dueAt, text, and the channel.
+    const used = new Map<string, number>();
+    const timeFor = (date: string, ch: string) => {
+      const n = used.get(`${date}|${ch}`) ?? 0;
+      used.set(`${date}|${ch}`, n + 1);
+      return (["10:00", "13:00", "16:00", "19:00"] as const)[Math.min(n, 3)];
+    };
+    const drafts = [];
+    const remember = (post: CreatedPost, fallback: { channelId: string; service: string; channelName: string; dueAt: string; text: string }) => {
+      drafts.push(toSavedDraft(post, tz, fallback));
+    };
+    plan.suggestions.forEach((s: any, i: number) => {
+      if (i >= 5) { s.error = "Buffer API: sample error for the preview"; return; }
+      const ch = channels.find((c) => c.id === s.channelId)!;
+      const dueAt = zonedIso(s.date, timeFor(s.date, ch.id), tz);
+      s.bufferId = `b${i}`;
+      remember({
+        id: s.bufferId, dueAt, text: s.text, channelId: ch.id, channelService: ch.service,
+        channel: { id: ch.id, service: ch.service, name: ch.name, displayName: ch.name },
+      }, { channelId: ch.id, service: ch.service, channelName: ch.name, dueAt, text: s.text });
+    });
+    const ph = channels.find((c) => c.id === plan.placeholder.channelId)!;
+    const phDue = zonedIso(plan.publishDate, "08:00", tz);
+    const phText = `Publish day: “${docTitle}”\n\nPlaceholder saved by Longform. Publish the piece by hand.`;
     plan.placeholder.bufferId = "bp";
-    return send("application/json", JSON.stringify({ ...me(), saved: 6, failed: 1 }));
+    remember({
+      id: "bp", dueAt: phDue, text: phText, channelId: ph.id, channelService: ph.service,
+      channel: { id: ph.id, service: ph.service, name: ph.name, displayName: ph.name },
+    }, { channelId: ph.id, service: ph.service, channelName: ph.name, dueAt: phDue, text: phText });
+    return send("application/json", JSON.stringify({ ...me(), saved: 6, failed: 1, savedDrafts: orderSavedDrafts(drafts) }));
   }
   if (url.pathname.startsWith("/api/")) return send("application/json", "{}");
   send("text/html", appPage("Longform", !signedIn));

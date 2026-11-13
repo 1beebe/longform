@@ -25,6 +25,10 @@ const STOP = new Set(("a about above after again against all also am an and any 
   "piece post essay article draft read reading reader readers writer writes wrote write written writing here's what's that's it's there's don't doesn't isn't aren't can't won't didn't today week thing things really still ever never always often").split(" "));
 const FIRST_PERSON = /(^| )(i|i'm|i've|i'd|i'll|me|my|mine|myself)( |$)/;
 const TAKEAWAYS = ["the lesson", "lesson learned", "takeaway", "changed my mind", "keep thinking", "stop thinking", "here's the thing", "the truth is", "game changer", "game-changer", "let that sink in", "what do you think", "thoughts?", "agree?"];
+// The account holder is the person who wrote the draft. These phrases narrate
+// them from outside ("the writer's take", "the author says"). Naming someone
+// else ("Thoreau says") does not match.
+const SELF_REF = /\bthe (writer|author)('s)?\b/i;
 export const MAX_NEW = 0.4; // share of content words that may be new: room to rephrase; the AI check handles meaning
 
 const stem = (w: string) => w.replace(/'s$/, "").replace(/(ingly|edly|ing|ed|ies|es|ly|s)$/, "") || w;
@@ -60,6 +64,8 @@ export class DocIndex {
 
   // Content words, numbers and framings in the post that the draft never uses.
   unsupported(post: string): string | undefined {
+    const outside = selfReference(post);
+    if (outside) return outside;
     const w = words(post);
     const joined = ` ${w.join(" ")} `;
     const nums = w.filter(isNumber).filter((x) => !this.numbers.has(x.replace(/[^\d.]/g, "")));
@@ -94,6 +100,16 @@ export class DocIndex {
     if (extra) return { ok: false, why: extra };
     return { ok: true };
   }
+}
+
+// Flags "the writer", "the writer's", "the author", "the author's" (any case,
+// including a curly apostrophe). Returns the reason to send back for a rewrite.
+export function selfReference(post: string): string | undefined {
+  const text = normalize(post.split(LINK).join(" "));
+  const found = text.match(SELF_REF);
+  if (!found) return undefined;
+  const phrase = found[0];
+  return `it refers to them from outside ("${phrase}"). Speak as them, or state the idea directly`;
 }
 
 export const LIMITS: Record<string, number> = {

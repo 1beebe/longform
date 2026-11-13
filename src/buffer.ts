@@ -217,19 +217,30 @@ export async function getQueue(client: BufferClient, organizationId: string, sta
   }
 }
 
+// The post createPost actually stored. The confirmation is built from this,
+// not from the time and channel we asked for.
+export interface CreatedPost {
+  id: string;
+  dueAt?: string;
+  text?: string;
+  channelId?: string;
+  channelService?: string;
+  channel?: { id?: string; service?: string; name?: string; displayName?: string | null };
+}
+
 // One dated draft. Verified 2026-11-12 against the live API: customScheduled
 // with dueAt and saveToDraft keeps the date and stays a draft.
 export async function createDatedDraft(
   client: BufferClient,
   p: { channelId: string; service: string; text: string; dueAt: string },
-): Promise<string> {
+): Promise<CreatedPost> {
   const metadata: Record<string, unknown> = {};
   if (p.service === "facebook") metadata.facebook = { type: "post" };
   if (p.service === "instagram") metadata.instagram = { type: "post", shouldShareToFeed: true };
-  const data = await client.query<{ createPost: { post?: { id: string }; message?: string } }>(
+  const data = await client.query<{ createPost: { post?: CreatedPost; message?: string } }>(
     `mutation Draft($input: CreatePostInput!) {
       createPost(input: $input) {
-        ... on PostActionSuccess { post { id } }
+        ... on PostActionSuccess { post { id dueAt text channelId channelService channel { id service name displayName } } }
         ... on MutationError { message }
       }
     }`,
@@ -245,7 +256,7 @@ export async function createDatedDraft(
       },
     },
   );
-  const id = data.createPost.post?.id;
-  if (!id) throw new Error(data.createPost.message ?? "Buffer didn't take that draft");
-  return id;
+  const post = data.createPost.post;
+  if (!post?.id) throw new Error(data.createPost.message ?? "Buffer didn't take that draft");
+  return post;
 }
