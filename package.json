@@ -1,0 +1,18 @@
+{
+  "name": "longform-planner",
+  "version": "0.1.0",
+  "description": "Plan a long-form piece around your Buffer queue: an open publish day, and supporting posts pulled from your own draft, saved to Buffer as drafts.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc && esbuild test/logic.test.ts --bundle --platform=node --format=esm --outfile=.test/logic.test.mjs --log-level=warning && node --test .test/logic.test.mjs",
+    "preview": "esbuild scripts/preview.ts --bundle --platform=node --format=esm --outfile=.test/preview.mjs --log-level=warning && node .test/preview.mjs"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261030.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.156.0"
+  }
+}
