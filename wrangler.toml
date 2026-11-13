@@ -38,5 +38,5 @@ fallthrough = false
 
 [[rules]]
 type = "Data"
-globs = ["**/*.webp", "**/*.woff2"]
+globs = ["**/*.webp", "**/*.woff2", "**/*.jpg", "**/*.png"]
 fallthrough = false

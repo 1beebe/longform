@@ -3,7 +3,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 // The mark: a page whose lines get shorter, like a long piece trimmed into posts.
 const MARK = `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><rect x="8" y="9" width="16" height="3" rx="1.5" fill="var(--accent-ink)"/><rect x="8" y="14.5" width="12" height="3" rx="1.5" fill="var(--accent-ink)"/><rect x="8" y="20" width="7" height="3" rx="1.5" fill="var(--accent-ink)"/></svg>`;
 
-const DESCRIPTION = "Plan the launch of a long-form piece around your Buffer queue: an open day to publish, and posts rephrased from your own draft, saved to Buffer as drafts.";
+const DESCRIPTION = "Buffer can't publish long-form. Longform puts your article on your Buffer calendar and lines up short posts from it, saved as drafts.";
+const SITE = "https://longform.lbeebe.com";
 
 function shell(name: string, title: string, main: string, opts: { script?: boolean; nav?: string } = {}): string {
   const script = opts.script ?? true;
@@ -14,11 +15,23 @@ function shell(name: string, title: string, main: string, opts: { script?: boole
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${DESCRIPTION}">
-<meta property="og:title" content="${esc(name)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${esc(name)}">
+<meta property="og:url" content="${SITE}/">
+<meta property="og:title" content="${esc(name)}: your long-form piece, in your Buffer queue">
 <meta property="og:description" content="${DESCRIPTION}">
+<meta property="og:image" content="${SITE}/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${esc(name)}: a calendar of a Buffer queue with the long-form publish day starred and short posts placed on the open days around it.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(name)}: your long-form piece, in your Buffer queue">
+<meta name="twitter:description" content="${DESCRIPTION}">
+<meta name="twitter:image" content="${SITE}/og.jpg">
 <meta name="theme-color" content="#f7f9fa" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0e1a1f" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/app.css">
 </head>
