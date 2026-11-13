@@ -22,7 +22,7 @@
   };
 
   let me = null; // the server's view: doc, plan, board
-  const ui = { week: 0, busy: "", error: "", notice: "", edits: {}, ask: null, move: null, placeholder: null, pickChannels: false, justSaved: null };
+  const ui = { week: 0, picking: false, busy: "", error: "", notice: "", edits: {}, ask: null, move: null, placeholder: null, pickChannels: false, justSaved: null };
 
   // ---- small helpers ----
   function h(tag, attrs, ...kids) {
@@ -273,7 +273,14 @@
   }
 
   function chip(x, b, phone) {
-    if (x.kind === "p") return h("div", { class: "ev p" }, "★ Publish long-form");
+    if (x.kind === "p") {
+      // Drag the publish chip to another day to move the plan (desktop; phones use Pick another day).
+      if (ui.picking || ui.busy) return h("div", { class: "ev p" }, "★ Publish long-form");
+      return h("div", { class: "ev p drag", draggable: "true", title: "Drag to another day to move the plan",
+        ondragstart: (e) => { dragging = true; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "publish"); document.getElementById("calendar").classList.add("dragging"); },
+        ondragend: () => { dragging = false; const c = document.getElementById("calendar"); if (c) { c.classList.remove("dragging"); c.querySelectorAll(".drop").forEach((x) => x.classList.remove("drop")); } } },
+        "★ Publish long-form");
+    }
     if (x.kind === "q") {
       const ch = b.channels.find((c) => c.id === x.q.channelId);
       const svc = ch ? ch.service : "";
@@ -283,11 +290,35 @@
     }
     const c = x.c;
     const text = phone ? `Suggested · ${ROLE[c.role]} on ${label(c.service)}` : ROLE[c.role];
-    return h("div", { class: `ev s${c.bufferId ? " done" : ""}${c.included === false ? " off" : ""}`, title: `${ROLE[c.role]} on ${label(c.service)}` }, dot(c.service), h("span", null, c.bufferId ? `✓ ${text}` : text));
+    const cls = `ev s${c.bufferId ? " done" : ""}${c.included === false ? " off" : ""}`;
+    const inner = [dot(c.service), h("span", null, c.bufferId ? `✓ ${text}` : text)];
+    // While picking a publish day the whole cell is a button, so the chip stays plain.
+    if (ui.picking) return h("div", { class: cls, title: `${ROLE[c.role]} on ${label(c.service)}` }, ...inner);
+    return h("button", { class: `${cls} jump`, type: "button", title: `Go to the ${ROLE[c.role].toLowerCase()} for ${label(c.service)}`, onclick: () => jumpTo(c.slot) }, ...inner);
+  }
+
+  let dragging = false;
+  const dropAttrs = (d) => ({
+    ondragover: (e) => { if (!dragging) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; e.currentTarget.classList.add("drop"); },
+    ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove("drop"); },
+    ondrop: (e) => { if (!dragging) return; e.preventDefault(); dragging = false; setPublishDay(d); },
+  });
+
+  function jumpTo(slot) {
+    const el = document.getElementById(`post${slot}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  }
+
+  function startPicking() {
+    ui.picking = true; ui.notice = ""; render();
+    document.getElementById("calendar").scrollIntoView({ behavior: "smooth" });
   }
 
   async function setPublishDay(date) {
-    if (!me.plan || date === me.plan.publishDate) return;
+    ui.picking = false;
+    if (!me.plan || date === me.plan.publishDate) { render(); return; }
     ui.busy = "day"; ui.error = "";
     try {
       // Unsaved date moves are dropped: the posts move with the new day.
@@ -314,9 +345,9 @@
       const n = d.slice(8) === "01" || i === 0 ? short(d) : String(+d.slice(8));
       const shown = items.sort((a, c) => "pqs".indexOf(a.kind) - "pqs".indexOf(c.kind));
       const kids = [h("span", { class: "n" }, n), ...shown.slice(0, 4).map((x) => chip(x, b)), shown.length > 4 ? h("div", { class: "ev more" }, `+${shown.length - 4} more`) : null];
-      cells.push(p && !past
-        ? h("button", { class: cls, type: "button", "aria-label": `Publish on ${longish(d)}`, onclick: () => setPublishDay(d) }, kids)
-        : h("div", { class: cls }, kids));
+      cells.push(p && !past && ui.picking
+        ? h("button", { class: `${cls} pickable`, type: "button", "aria-label": `Publish on ${longish(d)}`, onclick: () => setPublishDay(d) }, kids)
+        : h("div", { class: cls, ...(p && !past ? dropAttrs(d) : {}) }, kids));
     }
     const maxWeek = 2;
     return h("div", { class: "card", id: "calendar" },
@@ -329,8 +360,11 @@
       agenda(b, p, by),
       p ? h("div", { class: "why" }, h("span", { "aria-hidden": "true" }, "💡"),
         h("span", null, ...whyParts(p.reason)),
-        h("button", { class: "linkish mv", onclick: () => { ui.notice = "Click any day from tomorrow on to make it the publish day. The posts move with it."; render(); document.getElementById("calendar").scrollIntoView({ behavior: "smooth" }); } }, "Pick another day"))
+        ui.picking
+          ? h("button", { class: "linkish mv", onclick: () => { ui.picking = false; render(); } }, "Cancel")
+          : h("button", { class: "linkish mv", onclick: startPicking }, "Pick another day"))
         : h("p", { class: "hint" }, "Your queue for the next six weeks. Plan the launch to see a suggested publish day."),
+      ui.picking ? h("p", { class: "hint picking", role: "status" }, "Click the day you want to publish on. The posts move with it. On a computer you can also drag the ★ to a day.") : null,
       ui.busy === "day" ? h("p", { class: "hint" }, "Moving the plan…") : null,
     );
   }
@@ -358,7 +392,7 @@
       flush();
       const pub = p && d === p.publishDate;
       const kids = [h("div", { class: "dt" }, DOW[dow(d)], h("b", null, d.slice(8) === "01" ? short(d) : +d.slice(8))), h("div", { class: "list" }, items.map((x) => chip(x, b, true)))];
-      rows.push(p && d > b.today ? h("button", { class: `ag${pub ? " pub" : ""}`, type: "button", onclick: () => setPublishDay(d) }, kids) : h("div", { class: `ag${pub ? " pub" : ""}` }, kids));
+      rows.push(p && d > b.today && ui.picking ? h("button", { class: `ag${pub ? " pub" : ""} pickable`, type: "button", onclick: () => setPublishDay(d) }, kids) : h("div", { class: `ag${pub ? " pub" : ""}` }, kids));
     }
     flush();
     return h("div", { class: "agenda" }, rows);
@@ -436,7 +470,7 @@
     const moving = ui.move === c.slot && !saved;
     const askInput = h("input", { type: "text", placeholder: "e.g. shorter, or use the line about…", "aria-label": "What should change", "data-key": `a${c.slot}`, maxlength: "300" });
     const busy = ui.busy === `revise${c.slot}`;
-    return h("article", { class: `post${c.role === "launch" ? " main" : ""}${c.included === false ? " off" : ""}${saved ? " saved" : ""}` },
+    return h("article", { id: `post${c.slot}`, class: `post${c.role === "launch" ? " main" : ""}${c.included === false ? " off" : ""}${saved ? " saved" : ""}` },
       h("div", { class: "inc" },
         h("input", { type: "checkbox", id: `inc${c.slot}`, checked: c.included !== false, disabled: saved, onchange: (e) => { edit(c.slot, { included: e.target.checked }); render(); } }),
         h("label", { for: `inc${c.slot}` }, "Include"),
