@@ -8,7 +8,8 @@ import { DocError, fetchDoc, parsePasted } from "./doc";
 import { GoogleReconnect, googleAuthUrl, googleExchange, googleReady, googleToken, readPickedDoc, revokeGoogle } from "./google";
 import { LIMITS } from "./guard";
 import { ModelBusy, ModelError, hasModel } from "./model";
-import { busyByDay, forgetDeleted, pickPublishDay, place, placeholderChannel, reasonFor, type Slot } from "./plan";
+import { busyByDay, forgetDeleted, pickPublishDay, place, placeAfter, placeholderChannel, reasonAfter, reasonFor, type Slot } from "./plan";
+import { fetchSubstack } from "./substack";
 import { cookie, createSession, destroySession, loadSession, readCookie, saveSession, type Session, type Suggestion } from "./session";
 import { RevisionRejected, revise, serviceName, suggest } from "./suggest";
 import { orderSavedDrafts, toSavedDraft, type DraftFallback, type SavedDraft } from "./saved";
@@ -155,6 +156,14 @@ async function body(req: Request, max = 8_000): Promise<Record<string, unknown>>
   }
 }
 
+const isGoogleDoc = (link: string) => {
+  try {
+    return new URL(link.trim()).hostname === "docs.google.com";
+  } catch {
+    return true; // let the Google reader explain a malformed link
+  }
+};
+
 const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T12:00:00Z`));
 
 function reserveModel(s: Session, calls: number): void {
@@ -196,7 +205,7 @@ function view(s: Session, b?: Board) {
     organizationId: s.organizationId,
     aiReady: undefined as boolean | undefined,
     google: { ready: false, connected: Boolean(s.google) },
-    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, sample: Boolean(s.doc.sample), picked: Boolean(s.doc.fileId), fileId: s.doc.fileId, modifiedTime: s.doc.modifiedTime, sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
+    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, sample: Boolean(s.doc.sample), picked: Boolean(s.doc.fileId), fileId: s.doc.fileId, modifiedTime: s.doc.modifiedTime, source: s.doc.source, publishedAt: s.doc.publishedAt, preview: Boolean(s.doc.preview), sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
     plan: s.plan ?? null,
     board: b
       ? {
@@ -270,9 +279,9 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
           const { tokens, changed } = await googleToken(env, s.google);
           if (changed) { s.google = tokens; await save(); }
           doc = await readPickedDoc(tokens.accessToken, b.fileId);
-        } else if (typeof b.url === "string" && b.url.trim()) doc = await fetchDoc(b.url);
+        } else if (typeof b.url === "string" && b.url.trim()) doc = isGoogleDoc(b.url) ? await fetchDoc(b.url) : await fetchSubstack(b.url);
         else if (typeof b.text === "string" && b.text.trim()) doc = parsePasted(b.text.slice(0, 150_000), typeof b.title === "string" ? b.title.slice(0, 200) : undefined);
-        else throw new UserError("Paste a Google Doc link first.");
+        else throw new UserError("Paste a Google Doc or Substack link first.");
         s.doc = doc;
         s.plan = undefined;
         await save();
@@ -289,22 +298,25 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
       }
 
       if (req.method === "POST" && path === "/api/suggest") {
-        if (!s.doc) throw new UserError("Choose your Google Doc first.");
+        if (!s.doc) throw new UserError("Choose your piece first.");
         if (!hasModel(env)) throw new UserError("The AI step isn't set up on this server yet.", 503);
         const b = await board(client, s);
         if (!b.channels.length) throw new UserError("None of your Buffer channels take text posts. Connect LinkedIn, X, Threads, Bluesky, Mastodon or Facebook in Buffer first.");
         reserveModel(s, 4); // write, check, retry, check
         await save();
         const busy = busyByDay(b.queue, b.timezone);
-        const publishDate = pickPublishDay(busy, b.today);
-        const slots = place(busy, b.channels, publishDate, b.today);
+        // Already published: follow-ups from tomorrow, no placeholder, the day stays put.
+        const published = Boolean(s.doc.publishedAt);
+        const publishDate = published ? localDate(Date.parse(s.doc.publishedAt!), b.timezone) : pickPublishDay(busy, b.today);
+        const slots = published ? placeAfter(busy, b.channels, b.today) : place(busy, b.channels, publishDate, b.today);
         const { suggestions, dropped } = await suggest(env, s.doc, slots);
         const ph = placeholderChannel(b.channels)!;
         s.plan = {
           publishDate,
-          reason: reasonFor(busy, publishDate, false),
+          published: published || undefined,
+          reason: published ? reasonAfter(busy, publishDate, b.today, slots) : reasonFor(busy, publishDate, false),
           suggestions,
-          placeholder: { channelId: ph.id, included: true },
+          placeholder: { channelId: ph.id, included: !published },
           createdAt: Date.now(),
         };
         await save();
@@ -314,6 +326,7 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
       if (req.method === "POST" && path === "/api/publish-day") {
         const p = s.plan;
         if (!p) throw new UserError("Make a plan first.");
+        if (p.published) throw new UserError("This piece is already published, so its day can't move. Move single posts with Move date.");
         const req2 = await body(req);
         if (!isDate(req2.date)) throw new UserError("Pick a day on the calendar.");
         const b = await board(client, s);
@@ -365,7 +378,7 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
           if (isDate(e.date)) card.date = e.date;
         }
         const ph = b.placeholder as Record<string, unknown> | undefined;
-        if (ph && !p.placeholder.bufferId) {
+        if (ph && !p.placeholder.bufferId && !p.published) {
           p.placeholder.included = ph.included !== false;
           if (typeof ph.channelId === "string" && bd.allChannels.some((c) => c.id === ph.channelId)) p.placeholder.channelId = ph.channelId;
         }

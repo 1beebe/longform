@@ -25,6 +25,16 @@ const SHAPE: { role: Role; days: number[] }[] = [
   { role: "followup", days: [7, 6, 8] },
 ];
 
+// A piece that's already out: follow-ups only, in days from today. Every one
+// links back to the post.
+const AFTER: { role: Role; days: number[] }[] = [
+  { role: "share", days: [1, 2, 3] },
+  { role: "pullquote", days: [3, 4, 2, 5] },
+  { role: "keyidea", days: [5, 6, 7, 4] },
+  { role: "keyidea", days: [9, 8, 10, 11] },
+  { role: "followup", days: [14, 13, 15, 12, 16] },
+];
+
 export type Busy = Map<string, QueueItem[]>; // date -> queued items that day
 
 export function busyByDay(queue: QueueItem[], tz: string): Busy {
@@ -96,15 +106,15 @@ export function placeholderChannel(channels: Channel[]): Channel | undefined {
 
 // Place the six roles around the publish day. With `fixed`, each slot keeps
 // its channel (the text was written for it) and only the dates move.
-export function place(busy: Busy, channels: Channel[], p: string, today: string, fixed?: Slot[]): Slot[] {
+export function place(busy: Busy, channels: Channel[], p: string, today: string, fixed?: Slot[], shapeList = SHAPE): Slot[] {
   const taken = new Set<string>(); // `${date}|${channelId}` used by a suggestion
   const uses = new Map<string, number>();
   const out: Slot[] = [];
   const earliest = addDays(today, 1);
-  SHAPE.forEach((shape, i) => {
+  shapeList.forEach((shape, i) => {
     const keep = fixed?.find((f) => f.slot === i + 1);
     if (fixed && !keep) return;
-    const options = keep ? channels.filter((c) => c.id === keep.channelId) : shape.role === "launch" ? [launchChannel(channels)] : channels;
+    const options = keep ? channels.filter((c) => c.id === keep.channelId) : shape.role === "launch" || shape.role === "share" ? [launchChannel(channels)] : channels;
     if (!options.length) return;
     let best: { date: string; ch: Channel; cost: number } | undefined;
     shape.days.forEach((k, rank) => {
@@ -127,6 +137,21 @@ export function place(busy: Busy, channels: Channel[], p: string, today: string,
     out.push({ slot: i + 1, role: shape.role, channelId: best.ch.id, service: best.ch.service, channelName: best.ch.name, date: best.date });
   });
   return out;
+}
+
+// Follow-ups for a piece that's already published, from tomorrow on.
+export function placeAfter(busy: Busy, channels: Channel[], today: string): Slot[] {
+  return place(busy, channels, today, today, undefined, AFTER);
+}
+
+export function reasonAfter(busy: Busy, publishedOn: string, today: string, slots: Slot[]): string {
+  const when = publishedOn === today ? "today" : publishedOn > addDays(today, -7) ? `on ${longDate(publishedOn)}` : `on ${shortDate(publishedOn)}, ${publishedOn.slice(0, 4)}`;
+  const lead = `Published ${when}.`;
+  if (!slots.length) return `${lead} There was no room for follow-ups in the next two weeks.`;
+  const dates = slots.map((s) => s.date).sort();
+  const total = [...busy.values()].reduce((n, l) => n + l.length, 0);
+  const tail = total ? "on the quietest days in your queue, so they don't crowd posts you already have." : "and nothing else is queued, so every day was open.";
+  return `${lead} Follow-ups run ${span(dates[0], dates[dates.length - 1])}, ${tail}`;
 }
 
 // Drafts deleted in Buffer. A saved post that is dated after today and inside

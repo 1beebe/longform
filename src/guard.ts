@@ -117,8 +117,9 @@ export const LIMITS: Record<string, number> = {
 };
 
 // Fit a post to a channel's limit by dropping whole sentences from the end.
-export function fit(text: string, service: string): string | undefined {
-  const limit = LIMITS[service] ?? 500;
+// `reserve` holds back room for a real link that will replace [link].
+export function fit(text: string, service: string, reserve = 0): string | undefined {
+  const limit = (LIMITS[service] ?? 500) - reserve;
   let t = text.trim();
   if (t.length <= limit) return t;
   const keepLink = t.includes(LINK);

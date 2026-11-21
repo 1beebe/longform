@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DocIndex, fit, selfReference } from "../src/guard";
+import { DocIndex, LIMITS, fit, selfReference } from "../src/guard";
 import { busyByDay, pickPublishDay, place, reasonFor } from "../src/plan";
 import { parseDocHtml, parsePasted, exportUrl } from "../src/doc";
 import { zonedIso, localDate, addDays, weekday } from "../src/time";
@@ -201,4 +201,113 @@ test("sample piece: Walking loads as a sectioned doc", async () => {
   assert.ok(d.words > 11000 && d.words < 13000, `words ${d.words}`);
   assert.ok(d.sections[0].text.startsWith("I wish to speak a word for Nature"));
   assert.ok(d.sections[3].text.includes("in Wildness is the preservation of the World"));
+});
+
+// ---- published Substack posts ----
+import { substackRef, docFromPost, docFromPage, looksLikeSubstack } from "../src/substack";
+import { placeAfter, reasonAfter } from "../src/plan";
+import { suggest } from "../src/suggest";
+
+const BODY = `<p>${DOC.split("\n\n")[0]}</p><div class="subscription-widget-wrap"><p>Thanks for reading! Subscribe for free to receive new posts.</p><form><input type="email"><button>Subscribe</button></form></div><h2>What I learned</h2><p>${DOC.split("\n\n")[1]}</p><figure><img src="x.png"><figcaption>A caption that isn't part of the text</figcaption></figure><p>${DOC.split("\n\n")[2]} And a few more words so the piece clears the eighty word floor with room to spare.</p><p class="button-wrapper"><a class="button"><span>Share</span></a></p>`;
+
+test("substack: link forms", () => {
+  assert.deepEqual(substackRef("https://lbeebe.substack.com/p/the-week-after?utm_source=x"), { host: "lbeebe.substack.com", slug: "the-week-after", link: "https://lbeebe.substack.com/p/the-week-after" });
+  assert.equal(substackRef("https://open.substack.com/pub/lbeebe/p/the-week-after?r=abc").link, "https://lbeebe.substack.com/p/the-week-after");
+  assert.equal(substackRef("https://www.example-newsletter.com/p/a-post").host, "www.example-newsletter.com");
+  assert.equal(substackRef("https://substack.com/home/post/p-123456789").id, "123456789");
+  assert.equal(substackRef("https://substack.com/@lbeebe/p-123456789").id, "123456789");
+  assert.throws(() => substackRef("https://lbeebe.substack.com/"));
+  assert.throws(() => substackRef("https://substack.com/p/x"));
+  assert.throws(() => substackRef("file:///p/x"));
+  assert.throws(() => substackRef("https://localhost/p/x"));
+  assert.equal(looksLikeSubstack("https://docs.google.com/document/d/abc/edit"), false);
+});
+
+test("substack: post JSON becomes a published doc without the subscribe box", () => {
+  const ref = substackRef("https://lbeebe.substack.com/p/the-week-after");
+  const d = docFromPost({ title: "The week after", post_date: "2026-11-18T13:00:00.000Z", canonical_url: "https://lbeebe.substack.com/p/the-week-after", audience: "everyone", body_html: BODY, type: "newsletter" }, ref);
+  assert.equal(d.title, "The week after");
+  assert.equal(d.source, "substack");
+  assert.equal(d.publishedAt, "2026-11-18T13:00:00.000Z");
+  assert.equal(d.url, "https://lbeebe.substack.com/p/the-week-after");
+  const all = d.sections.map((s) => s.text).join(" ");
+  assert.ok(!/Thanks for reading|Subscribe|caption|Share/.test(all), all);
+  assert.deepEqual(d.sections.map((s) => s.heading), ["Opening", "What I learned"]);
+  assert.equal(d.preview, undefined);
+  // A paid post whose free preview is too short says so.
+  assert.throws(() => docFromPost({ title: "Paid", audience: "only_paid", body_html: "<p>Short teaser.</p>" }, ref), /paid subscribers/);
+});
+
+test("substack: falls back to the post page", () => {
+  const ref = substackRef("https://www.example-newsletter.com/p/a-post");
+  const html = `<html><head><meta property="og:title" content="A post"><script type="application/ld+json">{"datePublished":"2026-11-10T09:00:00+00:00"}</script></head><body><nav><p>Menu</p></nav><div class="available-content"><div class="body markup">${BODY}</div></div><div class="post-footer"><p>Ready for more?</p><p>A footer paragraph that should not be read as part of the piece at all.</p></div></body></html>`;
+  const d = docFromPage(html, ref);
+  assert.equal(d.title, "A post");
+  assert.equal(d.publishedAt, "2026-11-10T09:00:00.000Z");
+  const all = d.sections.map((s) => s.text).join(" ");
+  assert.ok(!all.includes("Menu") && !all.includes("footer"), all);
+});
+
+test("published piece: follow-ups start tomorrow and avoid busy days", () => {
+  const today = "2026-11-20";
+  const q = (d: string, ch = "li") => ({ id: d + ch, channelId: ch, dueAt: `${d}T15:00:00Z`, status: "scheduled", text: "x" });
+  const busy = busyByDay([q("2026-11-21"), q("2026-11-24", "x")], "UTC");
+  const channels = [{ id: "li", service: "linkedin", name: "LI" }, { id: "x", service: "twitter", name: "X" }];
+  const slots = placeAfter(busy, channels, today);
+  assert.equal(slots.length, 5);
+  assert.deepEqual(slots.map((s) => s.role), ["share", "pullquote", "keyidea", "keyidea", "followup"]);
+  assert.equal(slots[0].channelId, "li");
+  for (const s of slots) assert.ok(s.date > today && s.date <= addDays(today, 16));
+  assert.ok(!slots.some((s) => s.date === "2026-11-21" && s.channelId === "li"));
+  const keys = slots.map((s) => `${s.date}|${s.channelId}`);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.match(reasonAfter(busy, "2026-11-18", today, slots), /^Published on Wednesday, Nov 18\. Follow-ups run Nov \d+ to (Dec )?\d+/);
+  assert.match(reasonAfter(busy, "2025-03-02", today, slots), /^Published on Mar 2, 2025\./);
+});
+
+test("fit holds back room for a real link", () => {
+  const text = "A short opening line about launches. A second sentence that adds a little more length to it.\n\n[link]";
+  assert.equal(fit(text, "twitter"), text);
+  const out = fit(text, "twitter", 200)!;
+  assert.ok(out.length <= 80 && out.endsWith("[link]"), out);
+});
+
+test("published piece: posts get the post's real link, not [link]", async () => {
+  const url = "https://lbeebe.substack.com/p/the-week-after";
+  const doc = docFromPost({ title: "The week after", post_date: "2026-11-18T13:00:00Z", canonical_url: url, audience: "everyone", body_html: BODY }, substackRef(url));
+  const kv = new Map<string, string>();
+  const env = { ANTHROPIC_API_KEY: "test", SESSIONS: { get: async (k: string) => kv.get(k) ?? null, put: async (k: string, v: string) => { kv.set(k, v); } } } as any;
+  const replies = [
+    // The writer echoes the URL once and leaves the link off once: both end with the real link.
+    JSON.stringify([
+      { slot: 1, sectionIndex: 1, sourceQuote: "It is the starting gun.", text: `Publishing a piece is the starting gun, not the finish line.\n\n${url}` },
+      { slot: 2, sectionIndex: 2, sourceQuote: "I pick a quiet day.", text: "Pick a quiet day, tease the problem twice before it goes out, and quote one line the day after." },
+    ]),
+    JSON.stringify([{ slot: 1, supported: true, unsupported: "" }, { slot: 2, supported: true, unsupported: "" }]),
+  ];
+  const seen: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (_u: unknown, init?: { body?: string }) => {
+    seen.push(String(init?.body ?? ""));
+    return new Response(JSON.stringify({ content: [{ type: "text", text: replies.shift() }] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const slots = [
+      { slot: 1, role: "share" as const, channelId: "li", service: "linkedin", channelName: "LI", date: "2026-11-21" },
+      { slot: 2, role: "keyidea" as const, channelId: "x", service: "twitter", channelName: "X", date: "2026-11-23" },
+    ];
+    const { suggestions, dropped } = await suggest(env, doc, slots);
+    assert.equal(dropped, 0);
+    for (const s of suggestions) {
+      assert.ok(s.text.endsWith(`\n\n${url}`), s.text);
+      assert.ok(!s.text.includes("[link]"));
+      assert.equal(s.text.split(url).length, 2, "link appears once");
+      assert.ok(s.text.length <= LIMITS[s.service]);
+    }
+    assert.match(seen[0], /already published/);
+    // The checker never sees the address.
+    assert.ok(!seen[1].includes(url));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
