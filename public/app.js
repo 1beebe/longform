@@ -11,8 +11,8 @@
   const NAME = app.dataset.name || "Longform";
 
   const COLORS = { linkedin: "#2f5f8f", twitter: "#2b2b2b", threads: "#6b4a8a", instagram: "#b04a6a", bluesky: "#1d7bd8", mastodon: "#5b4bd6", facebook: "#3b5bb5", substack: "#e0691a" };
-  const ROLE = { teaser: "Teaser", launch: "Launch post", pullquote: "Pull-quote", keyidea: "Key idea", followup: "Follow-up" };
-  const ROLE_SHORT = { teaser: "teaser", launch: "launch", pullquote: "pull-quote", keyidea: "key idea", followup: "follow-up" };
+  const ROLE = { teaser: "Teaser", launch: "Launch post", share: "Share post", pullquote: "Pull-quote", keyidea: "Key idea", followup: "Follow-up" };
+  const ROLE_SHORT = { teaser: "teaser", launch: "launch", share: "share", pullquote: "pull-quote", keyidea: "key idea", followup: "follow-up" };
   // Unfiltered drafts. This tab opens on Unscheduled, so dated drafts sit
   // further down. Used for the header link only.
   const BUFFER_DRAFTS = "https://publish.buffer.com/schedule?tab=drafts";
@@ -206,10 +206,13 @@
     const linkForm = h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); useDoc({ url: url.value }); } },
       url, h("button", { class: google ? "btn dark" : "btn", type: "submit", disabled: ui.busy === "doc" }, ui.busy === "doc" && !google ? "Reading…" : "Use this doc"));
     const linkHelp = h("p", null, "In Google Docs, click Share and set General access to \u201cAnyone with the link can view.\u201d Then copy the link and paste it here.");
+    const postUrl = h("input", { class: "field", type: "url", placeholder: "https://yourname.substack.com/p/…", "aria-label": "Substack post link", "data-key": "post-url" });
+    const postForm = h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); useDoc({ url: postUrl.value }); } },
+      postUrl, h("button", { class: "btn dark", type: "submit", disabled: ui.busy === "doc" }, ui.busy === "doc" ? "Reading…" : "Use this post"));
     app.append(
       flow(1),
       h("h1", null, "Now choose your draft"),
-      h("p", { class: "lead" }, `Buffer is connected${me.org ? ` (${me.org})` : ""}. Pick the long-form piece you're about to publish.`),
+      h("p", { class: "lead" }, `Buffer is connected${me.org ? ` (${me.org})` : ""}. Pick the long-form piece you're about to publish, or one that's already out on Substack.`),
       ...banners(),
       h("section", { class: "card pick" },
         h("h2", null, "Your Google Doc"),
@@ -227,6 +230,11 @@
             h("div", { class: "row" }, h("button", { class: "btn dark", type: "submit", disabled: ui.busy === "doc" }, "Use this text")))),
         h("ul", { class: "reassure" }, h("li", null, "Read only"), h("li", null, "Only the doc you pick"), h("li", null, "Nothing posts on its own")),
       ),
+      h("section", { class: "card pick" },
+        h("h2", null, "Already published on Substack?"),
+        h("p", null, "Paste the post's link. The app reads the public post and plans follow-up posts over the next two weeks, each one linking back to it."),
+        postForm,
+        h("p", { class: "hint" }, "Paid-only posts: just the free preview can be read. Paste the text above instead if you want the whole piece.")),
       h("section", { class: "card pick sample" },
         h("h2", null, "No draft handy? Try a sample piece"),
         h("p", null, "Run the whole flow on Henry David Thoreau's essay \u201cWalking\u201d (1862, public domain, about 12,000 words). The plan uses your real Buffer queue, and anything you save lands in Buffer as a draft you can delete."),
@@ -239,8 +247,10 @@
     const p = me.plan;
     const saved = p && p.suggestions.length > 0 && p.suggestions.every((s) => s.bufferId || s.included === false);
     app.append(flow(saved ? 4 : 2),
-      h("h1", null, "Your launch plan"),
-      h("p", { class: "lead" }, p ? "A publish day picked from the gaps in your queue, with posts around it from your draft. Click another day to move everything." : "Your draft from Google Docs, your queue from Buffer."),
+      h("h1", null, me.doc.publishedAt ? "Your follow-up plan" : "Your launch plan"),
+      h("p", { class: "lead" }, p && p.published ? "Follow-up posts for your published piece, placed in the gaps in your queue over the next two weeks."
+        : p ? "A publish day picked from the gaps in your queue, with posts around it from your draft. Click another day to move everything."
+        : me.doc.source === "substack" ? "Your post from Substack, your queue from Buffer." : "Your draft from Google Docs, your queue from Buffer."),
       ...banners());
     app.append(sources(b));
     if (!b) return;
@@ -251,17 +261,23 @@
     }
   }
 
+  // YYYY-MM-DD for an ISO time, in the account's timezone.
+  function localYmd(iso, tz) {
+    try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz || undefined, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)); }
+    catch { return iso.slice(0, 10); }
+  }
+
   function sources(b) {
     const d = me.doc;
     const mins = Math.max(1, Math.round(d.words / 230));
     const queued = b ? b.queue.filter((q) => q.status !== "draft" && q.date >= b.today && q.date <= addDays(b.today, 28)).length : 0;
     const selected = b ? b.channels.filter((c) => c.selected) : [];
     const docCard = h("div", { class: "src" },
-      h("div", { class: "ic g" }, "G"),
+      h("div", { class: `ic ${d.source === "substack" ? "s" : "g"}` }, d.source === "substack" ? "S" : "G"),
       h("div", { class: "body" },
         h("h3", null, d.title),
-        h("p", null, [d.sample ? "Sample piece, public domain" : d.url ? "Google Doc" : "Pasted draft", d.modifiedTime ? ago(d.modifiedTime) : "", `${d.words.toLocaleString()} words`].filter(Boolean).join(" · ")),
-        h("div", { class: "meta" }, d.url && !d.sample && h("span", { class: "chip ok" }, d.picked ? "Connected to Google" : "Read from your link"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
+        h("p", null, [d.sample ? "Sample piece, public domain" : d.source === "substack" ? `Published on Substack ${short(me.plan && me.plan.published ? me.plan.publishDate : localYmd(d.publishedAt, b && b.timezone))}` : d.url ? "Google Doc" : "Pasted draft", d.modifiedTime ? ago(d.modifiedTime) : "", `${d.words.toLocaleString()} words`].filter(Boolean).join(" · ")),
+        h("div", { class: "meta" }, d.url && !d.sample && h("span", { class: "chip ok" }, d.picked ? "Connected to Google" : d.source === "substack" ? "Read from Substack" : "Read from your link"), d.preview && h("span", { class: "chip" }, "Free preview only"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
       h("div", { class: "act" },
         d.picked && me.google && me.google.connected
           ? h("button", { class: "linkish", onclick: () => { if (!me.plan || confirm("Pick another doc? This clears the current plan.")) openPicker(); } }, ui.busy === "doc" ? "Reading…" : "Change doc")
@@ -308,6 +324,7 @@
   function chip(x, b, phone) {
     if (x.kind === "p") {
       // Drag the publish chip to another day to move the plan (desktop; phones use Pick another day).
+      if (me.plan && me.plan.published) return h("div", { class: "ev p" }, "★ Published");
       if (ui.picking || ui.busy) return h("div", { class: "ev p" }, "★ Publish long-form");
       return h("div", { class: "ev p drag", draggable: "true", title: "Drag to another day to move the plan",
         ondragstart: (e) => { dragging = true; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "publish"); document.getElementById("calendar").classList.add("dragging"); },
@@ -380,7 +397,7 @@
       const kids = [h("span", { class: "n" }, n), ...shown.slice(0, 4).map((x) => chip(x, b)), shown.length > 4 ? h("div", { class: "ev more" }, `+${shown.length - 4} more`) : null];
       cells.push(p && !past && ui.picking
         ? h("button", { class: `${cls} pickable`, type: "button", "aria-label": `Publish on ${longish(d)}`, onclick: () => setPublishDay(d) }, kids)
-        : h("div", { class: cls, ...(p && !past ? dropAttrs(d) : {}) }, kids));
+        : h("div", { class: cls, ...(p && !past && !p.published ? dropAttrs(d) : {}) }, kids));
     }
     const maxWeek = 2;
     return h("div", { class: "card", id: "calendar" },
@@ -388,12 +405,13 @@
         h("div", { class: "nav" },
           h("button", { type: "button", "aria-label": "Earlier weeks", disabled: ui.week <= 0, onclick: () => { ui.week--; render(); } }, "‹"),
           h("button", { type: "button", "aria-label": "Later weeks", disabled: ui.week >= maxWeek, onclick: () => { ui.week++; render(); } }, "›"))),
-      h("div", { class: "legend" }, h("span", null, h("i", { class: "q" }), "Already in your Buffer"), h("span", null, h("i", { class: "s" }), "Suggested post"), h("span", null, h("i", { class: "p" }), "Publish the long-form")),
+      h("div", { class: "legend" }, h("span", null, h("i", { class: "q" }), "Already in your Buffer"), h("span", null, h("i", { class: "s" }), "Suggested post"), h("span", null, h("i", { class: "p" }), p && p.published ? "Published" : "Publish the long-form")),
       h("div", { class: "cal" }, DOW.map((x) => h("div", { class: "dow" }, x)), cells),
       agenda(b, p, by),
       p ? h("div", { class: "why" }, h("span", { class: "star", "aria-hidden": "true" }, "★"),
         h("span", null, ...whyParts(p.reason)),
-        ui.picking
+        p.published ? null
+          : ui.picking
           ? h("button", { class: "linkish mv", onclick: () => { ui.picking = false; render(); } }, "Cancel")
           : h("button", { class: "linkish mv", onclick: startPicking }, "Pick another day"))
         : h("p", { class: "hint" }, "Your queue for the next six weeks. Plan the launch to see a suggested publish day."),
@@ -457,9 +475,11 @@
   function postsSection(b, p) {
     const list = cards();
     const ph = placeholder();
-    const intro = "Each post summarizes or rephrases part of your draft and sits on the calendar around your publish day. Edit anything and untick what you don't want. They save to Buffer as drafts, so nothing posts until you approve it there.";
+    const intro = p.published
+      ? "Each post summarizes or rephrases part of your piece and links back to it. Edit anything and untick what you don't want. They save to Buffer as drafts, so nothing posts until you approve it there."
+      : "Each post summarizes or rephrases part of your draft and sits on the calendar around your publish day. Edit anything and untick what you don't want. They save to Buffer as drafts, so nothing posts until you approve it there.";
     const items = [];
-    let placed = false;
+    let placed = Boolean(p.published); // a published piece needs no placeholder
     for (const c of list) {
       if (!placed && c.date >= p.publishDate) { items.push(placeholderCard(b, p, ph)); placed = true; }
       items.push(postCard(b, p, c));
@@ -624,7 +644,7 @@
       h("div", { class: "dock" },
         h("span", { class: "t" }, summary),
         h("span", { class: "sp" }),
-        me.doc.url ? h("a", { class: "ghost", href: me.doc.url, target: "_blank", rel: "noopener" }, "Open the doc") : null,
+        me.doc.url ? h("a", { class: "ghost", href: me.doc.url, target: "_blank", rel: "noopener" }, me.doc.source === "substack" ? "Open the post" : "Open the doc") : null,
         t.total
           ? h("button", { class: "btn", type: "button", disabled: saving, onclick: save }, saving ? "Saving…" : `Save ${t.total} draft${t.total === 1 ? "" : "s"} to Buffer`)
           : bufferAction())));

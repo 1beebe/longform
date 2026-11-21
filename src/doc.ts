@@ -44,22 +44,28 @@ export function decode(s: string): string {
     .replace(/&([a-z]+);/gi, (m, n) => ENTITIES[n.toLowerCase()] ?? m);
 }
 
-function clean(inner: string): string {
+export function clean(inner: string): string {
   return decode(inner.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
 }
 
-export function parseDocHtml(html: string, url: string): Doc {
-  const title = clean(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "") || "Untitled doc";
-  const body = (html.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? html)
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[\s\S]*?<\/script>/gi, "");
-  const blocks: { kind: "h" | "p"; text: string }[] = [];
+export type Block = { kind: "h" | "p"; text: string };
+
+// Headings and paragraphs, in order, from an HTML body.
+export function htmlBlocks(body: string): Block[] {
+  body = body.replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<script[\s\S]*?<\/script>/gi, "");
+  const blocks: Block[] = [];
   const re = /<(h[1-3]|h[4-6]|p|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   for (let m; (m = re.exec(body)); ) {
     const text = clean(m[2]);
     if (!text) continue;
     blocks.push({ kind: /^h[1-3]$/i.test(m[1]) ? "h" : "p", text });
   }
+  return blocks;
+}
+
+export function parseDocHtml(html: string, url: string): Doc {
+  const title = clean(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "") || "Untitled doc";
+  const blocks = htmlBlocks(html.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? html);
   // A published doc repeats its title as a heading; drop that one.
   if (blocks[0]?.kind === "h" && blocks[0].text === title) blocks.shift();
   return buildDoc(title, blocks, url);
@@ -69,7 +75,7 @@ export function parseDocHtml(html: string, url: string): Doc {
 // closing punctuation that sit alone between blank lines.
 export function parsePasted(text: string, title?: string): Doc {
   const paras = text.replace(/\r/g, "").split(/\n\s*\n|\n(?=#)/).map((p) => p.trim()).filter(Boolean);
-  const blocks: { kind: "h" | "p"; text: string }[] = [];
+  const blocks: Block[] = [];
   for (const p of paras) {
     const lines = p.split("\n");
     if (/^#{1,3}\s/.test(lines[0])) {
@@ -86,7 +92,7 @@ export function parsePasted(text: string, title?: string): Doc {
   return buildDoc(t || "Pasted draft", blocks, "");
 }
 
-export function buildDoc(title: string, blocks: { kind: "h" | "p"; text: string }[], url: string): Doc {
+export function buildDoc(title: string, blocks: Block[], url: string): Doc {
   const sections: Section[] = [];
   let cur: Section | undefined;
   for (const b of blocks) {

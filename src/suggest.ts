@@ -15,7 +15,23 @@ const ROLE_BRIEF: Record<Role, string> = {
   pullquote: "uses a short exact quote from the body and frames it with a sentence that makes its point clear to someone who hasn't read the piece.",
   keyidea: "turns one idea from the body into a brief post with enough context to make the idea clear on its own.",
   followup: "goes out about a week later. Revisit a point the draft actually makes. Use a closing thought or question only if it appears in the draft.",
+  share: `points people to the piece. Built from the piece's central claim. Ends with ${LINK} on its own line, where the link to the piece will go.`,
 };
+
+// The piece is already live, so every post points back to it.
+const AFTER_BRIEF: Record<Role, string> = {
+  ...ROLE_BRIEF,
+  pullquote: `uses a short exact quote from the body and frames it with a sentence that makes its point clear to someone who hasn't read the piece. Ends with ${LINK} on its own line.`,
+  keyidea: `turns one idea from the body into a brief post with enough context to make the idea clear on its own. Ends with ${LINK} on its own line.`,
+  followup: `goes out about two weeks after the piece, for people who missed it. Revisit a point the piece actually makes. Use a closing thought or question only if it appears in the piece. Ends with ${LINK} on its own line.`,
+};
+
+const brief = (doc: Doc, role: Role) => (doc.publishedAt ? AFTER_BRIEF : ROLE_BRIEF)[role];
+const needsLink = (doc: Doc, role: Role) => role === "launch" || role === "share" || Boolean(doc.publishedAt && doc.url);
+
+// A published piece has a real address: it replaces [link] once the post passes.
+const withUrl = (doc: Doc, text: string) => (doc.publishedAt && doc.url ? text.split(LINK).join(doc.url) : text);
+const withToken = (doc: Doc, text: string) => (doc.publishedAt && doc.url ? text.split(doc.url).join(LINK) : text);
 
 // Spoken as the account holder, who wrote the draft. The forbidden phrases are
 // named here so the model avoids them; the guard rejects them if one slips through.
@@ -52,6 +68,7 @@ Also flag a post that talks about the person who wrote the draft from the outsid
 Reply with JSON only.`;
 
 function voiceNote(doc: Doc): string {
+  if (doc.publishedAt) return `This piece is already published. These posts go out after it, to bring readers to it. Don't call it new or say it's out today.\n\n`;
   if (!doc.sample) return "";
   return `This draft is the bundled sample: a public-domain essay by someone else, not the account holder's own piece. Attribute ideas to the person named in the title. Do not write as if the account holder lived it, and do not write "the writer" or "the author".\n\n`;
 }
@@ -66,7 +83,7 @@ async function verify(env: Env, doc: Doc, posts: { slot: number; text: string }[
 ${docBlock(doc)}
 
 The posts:
-${posts.map((p) => `- slot ${p.slot}: ${JSON.stringify(p.text.split(LINK).join("").trim())}`).join("\n")}
+${posts.map((p) => `- slot ${p.slot}: ${JSON.stringify(withToken(doc, p.text).split(LINK).join("").trim())}`).join("\n")}
 
 For every post, reply with a JSON array like [{"slot": 1, "supported": false, "unsupported": "the exact words in the post the draft doesn't support"}]. Use "supported": true and "unsupported": "" when the whole post is backed by the draft. Mark supported false when the post refers to its author as "the writer" or "the author" instead of speaking as them or stating the idea. Naming another person the draft is about is fine.`;
   try {
@@ -85,8 +102,8 @@ For every post, reply with a JSON array like [{"slot": 1, "supported": false, "u
 
 interface Raw { slot: number; sectionIndex?: number; sourceQuote?: string; text?: string }
 
-function slotLines(slots: Slot[]): string {
-  return slots.map((s) => `- slot ${s.slot}: a ${s.role} for ${serviceName(s.service)} (at most ${LIMITS[s.service] ?? 500} characters). A ${s.role} ${ROLE_BRIEF[s.role]}`).join("\n");
+function slotLines(doc: Doc, slots: Slot[]): string {
+  return slots.map((s) => `- slot ${s.slot}: a ${s.role} for ${serviceName(s.service)} (at most ${LIMITS[s.service] ?? 500} characters). A ${s.role} ${brief(doc, s.role)}`).join("\n");
 }
 
 const SHAPE = `[{"slot": 1, "sectionIndex": 2, "sourceQuote": "the exact line from the draft this post is built on", "text": "the post"}]`;
@@ -101,7 +118,7 @@ ${voiceNote(doc)}${docBlock(doc)}
 
 Write one post for each slot below. Use a different section for each post where you can. For each, give the section it came from, the exact sentence or phrase from the draft it's built on (copied character for character), and the post.
 
-${slotLines(slots)}${retry}
+${slotLines(doc, slots)}${retry}
 
 Reply with a JSON array like ${SHAPE}. Escape double quotes and line breaks inside JSON strings.${formatRetry ? " Your previous reply could not be parsed. Return compact, valid JSON only." : ""}`;
   const out = parseJson<Raw[]>(await generate(env, SYSTEM, message, 3000));
@@ -111,15 +128,16 @@ Reply with a JSON array like ${SHAPE}. Escape double quotes and line breaks insi
 
 function accept(raw: Raw | undefined, slot: Slot, index: DocIndex, doc: Doc): { s?: Suggestion; why?: string } {
   if (!raw?.text || !raw.sourceQuote) return { why: "no post came back" };
-  let text = String(raw.text).trim();
-  if (slot.role === "launch" && !text.includes(LINK)) text = `${text}\n\n${LINK}`;
-  const fitted = fit(text, slot.service);
+  let text = withToken(doc, String(raw.text).trim());
+  if (needsLink(doc, slot.role) && !text.includes(LINK)) text = `${text}\n\n${LINK}`;
+  const reserve = doc.publishedAt && doc.url ? Math.max(0, doc.url.length - LINK.length) : 0;
+  const fitted = fit(text, slot.service, reserve);
   if (!fitted) return { why: "too long for the channel" };
   const quote = String(raw.sourceQuote).trim().replace(/^["“]|["”]$/g, "");
   const check = index.passes(fitted, quote);
   if (!check.ok) return { why: check.why };
   const sectionIndex = doc.sections.some((s) => s.index === Number(raw.sectionIndex)) ? Number(raw.sectionIndex) : 0;
-  return { s: { ...slot, sectionIndex, sourceQuote: quote.slice(0, 400), text: fitted, included: true } };
+  return { s: { ...slot, sectionIndex, sourceQuote: quote.slice(0, 400), text: withUrl(doc, fitted), included: true } };
 }
 
 export function fullText(doc: Doc): string {
@@ -169,11 +187,11 @@ export async function revise(env: Env, doc: Doc, card: Suggestion, instruction: 
 
 ${voiceNote(doc)}${docBlock(doc)}
 
-This post is a ${card.role} for ${serviceName(card.service)} (at most ${LIMITS[card.service] ?? 500} characters). A ${card.role} ${ROLE_BRIEF[card.role]}
+This post is a ${card.role} for ${serviceName(card.service)} (at most ${LIMITS[card.service] ?? 500} characters). A ${card.role} ${brief(doc, card.role)}
 ${section ? `It was built from section ${section.index}, "${section.heading}".` : ""}
 
 The post now:
-${card.text}
+${withToken(doc, card.text)}
 
 Requested change: ${instruction}
 

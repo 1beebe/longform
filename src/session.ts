@@ -28,9 +28,12 @@ export interface Doc {
   fileId?: string; // picked from Google Drive
   modifiedTime?: string; // ISO, from Drive
   sample?: boolean; // the bundled sample piece
+  source?: "substack"; // read from a post that's already live
+  publishedAt?: string; // ISO; set when the piece is already published
+  preview?: boolean; // paywalled: only the free preview could be read
 }
 
-export type Role = "teaser" | "launch" | "pullquote" | "keyidea" | "followup";
+export type Role = "teaser" | "launch" | "share" | "pullquote" | "keyidea" | "followup";
 
 export interface Suggestion {
   slot: number; // stable id inside the plan
@@ -48,7 +51,8 @@ export interface Suggestion {
 }
 
 export interface Plan {
-  publishDate: string; // YYYY-MM-DD
+  publishDate: string; // YYYY-MM-DD; for a published piece, the day it went out
+  published?: boolean; // follow-ups for a piece that's already live: no placeholder, the day doesn't move
   reason: string;
   suggestions: Suggestion[];
   placeholder: { channelId: string; included: boolean; bufferId?: string; error?: string };
