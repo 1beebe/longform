@@ -144,9 +144,9 @@ export function placeAfter(busy: Busy, channels: Channel[], today: string): Slot
   return place(busy, channels, today, today, undefined, AFTER);
 }
 
-export function reasonAfter(busy: Busy, publishedOn: string, today: string, slots: Slot[]): string {
+export function reasonAfter(busy: Busy, publishedOn: string, today: string, slots: Slot[], dateUnknown = false): string {
   const when = publishedOn === today ? "today" : publishedOn > addDays(today, -7) ? `on ${longDate(publishedOn)}` : `on ${shortDate(publishedOn)}, ${publishedOn.slice(0, 4)}`;
-  const lead = `Published ${when}.`;
+  const lead = dateUnknown ? "Already published." : `Published ${when}.`;
   if (!slots.length) return `${lead} There was no room for follow-ups in the next two weeks.`;
   const dates = slots.map((s) => s.date).sort();
   const total = [...busy.values()].reduce((n, l) => n + l.length, 0);

@@ -101,7 +101,7 @@ function landing(name: string, show: boolean): string {
         <figure class="frame"><img src="/shots/step-doc.webp" width="1200" height="759" loading="lazy" alt="The draft step: a Choose from Google Drive button, with options to use a share link or paste the text instead."></figure>
         <span class="num">2</span>
         <h3>Choose your draft, or a published post</h3>
-        <p>Pick a draft in Google's file picker to plan around its publish day, or paste the link to a post that's already live on Substack to plan follow-ups. The app only reads it and never edits it.</p>
+        <p>Pick a draft in Google's file picker to plan around its publish day, or paste the link to a piece that's already live, on Substack, Medium or your own site, to plan follow-ups. The app only reads it and never edits it.</p>
       </li>
       <li>
         <figure class="frame"><img src="/shots/step-posts.webp" width="1200" height="759" loading="lazy" alt="Suggested post cards, each with its date, channel, the line from the draft it came from, and an editable text box."></figure>
@@ -164,7 +164,7 @@ export function privacyPage(name: string): string {
   const n = esc(name);
   return shell(name, `Privacy · ${name}`, `<main class="prose">
 <h1>Privacy</h1>
-<p>Last updated November 21, 2026. ${n} is run by L. Beebe, LLC. It reads your Buffer queue and a draft you choose, suggests posts from your draft, and saves the ones you approve to Buffer as drafts. It never publishes or schedules anything.</p>
+<p>Last updated November 26, 2026. ${n} is run by L. Beebe, LLC. It reads your Buffer queue and a draft you choose, suggests posts from your draft, and saves the ones you approve to Buffer as drafts. It never publishes or schedules anything.</p>
 <h2>What it keeps</h2>
 <p>Your Buffer sign-in tokens, the draft's text and your current plan are stored encrypted for up to 30 days so you can come back to the plan. Signing out deletes them. Your queue is read from Buffer each time and isn't stored. To keep usage fair, your session also holds the times of your AI requests in the last hour, and the app keeps one daily count of AI requests for everyone, with no account attached, which expires after two days.</p>
 <h2>What it does with your Buffer account</h2>
@@ -173,7 +173,7 @@ export function privacyPage(name: string): string {
 <p>To suggest posts, the draft's text is sent to an AI model (Anthropic's Claude, reached directly or through MindStudio). The app runs on Cloudflare. Your draft isn't shared with anyone else or sold.</p>
 <h2>Your Google Doc</h2>
 <p>If you connect Google, the app asks only for permission to open files you pick in Google's file picker. It can't see the rest of your Drive, and it never changes the doc. Signing out disconnects Google. You can also paste a link to a doc shared as "anyone with the link can view", paste the text, or try the sample piece.</p>
-<p>If you paste the link to a published Substack post, the app reads that one public post, the same text anyone can see on the web. It reads nothing else from your Substack and needs no Substack sign-in.</p>
+<p>If you paste the link to a published piece, on Substack or any other website, the app reads that one public page, the same text anyone can see without signing in. It reads nothing else from that site, sends no cookies or sign-ins, and keeps only the text of the piece with your plan. It only fetches public web addresses, so it can't be pointed at private or internal networks.</p>
 <h2>Questions and deletion</h2>
 <p>Sign out to delete what the app keeps. For anything else, write to L. Beebe, LLC through <a href="https://lbeebe.com">lbeebe.com</a>. See also the <a href="/terms">Terms</a>.</p>
 <p><a href="/">Back to the planner</a></p>

@@ -9,7 +9,8 @@ import { GoogleReconnect, googleAuthUrl, googleExchange, googleReady, googleToke
 import { LIMITS } from "./guard";
 import { ModelBusy, ModelError, hasModel } from "./model";
 import { busyByDay, forgetDeleted, pickPublishDay, place, placeAfter, placeholderChannel, reasonAfter, reasonFor, type Slot } from "./plan";
-import { fetchSubstack } from "./substack";
+import { fetchSubstack, looksLikeSubstack } from "./substack";
+import { fetchArticle } from "./article";
 import { cookie, createSession, destroySession, loadSession, readCookie, saveSession, type Session, type Suggestion } from "./session";
 import { RevisionRejected, revise, serviceName, suggest } from "./suggest";
 import { orderSavedDrafts, toSavedDraft, type DraftFallback, type SavedDraft } from "./saved";
@@ -172,6 +173,13 @@ function reserveModel(s: Session, calls: number): void {
   s.modelCalls = [...recent, ...Array(calls).fill(Date.now())];
 }
 
+const LINK_READS_PER_HOUR = 12;
+function reserveLinkRead(s: Session): void {
+  const recent = (s.linkReads ?? []).filter((t) => Date.now() - t < 3_600_000);
+  if (recent.length >= LINK_READS_PER_HOUR) throw new UserError("That's a lot of links for one hour. Give it a few minutes and try again.", 429);
+  s.linkReads = [...recent, Date.now()];
+}
+
 interface Board {
   today: string;
   rangeStart: string;
@@ -205,7 +213,7 @@ function view(s: Session, b?: Board) {
     organizationId: s.organizationId,
     aiReady: undefined as boolean | undefined,
     google: { ready: false, connected: Boolean(s.google) },
-    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, sample: Boolean(s.doc.sample), picked: Boolean(s.doc.fileId), fileId: s.doc.fileId, modifiedTime: s.doc.modifiedTime, source: s.doc.source, publishedAt: s.doc.publishedAt, preview: Boolean(s.doc.preview), sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
+    doc: s.doc ? { title: s.doc.title, url: s.doc.url, words: s.doc.words, sample: Boolean(s.doc.sample), picked: Boolean(s.doc.fileId), fileId: s.doc.fileId, modifiedTime: s.doc.modifiedTime, source: s.doc.source, site: s.doc.site, dateUnknown: Boolean(s.doc.dateUnknown), publishedAt: s.doc.publishedAt, preview: Boolean(s.doc.preview), sections: s.doc.sections.map((x) => ({ index: x.index, heading: x.heading })) } : null,
     plan: s.plan ?? null,
     board: b
       ? {
@@ -279,9 +287,19 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
           const { tokens, changed } = await googleToken(env, s.google);
           if (changed) { s.google = tokens; await save(); }
           doc = await readPickedDoc(tokens.accessToken, b.fileId);
-        } else if (typeof b.url === "string" && b.url.trim()) doc = isGoogleDoc(b.url) ? await fetchDoc(b.url) : await fetchSubstack(b.url);
+        } else if (typeof b.url === "string" && b.url.trim()) {
+          const link = b.url.trim().slice(0, 2000);
+          if (isGoogleDoc(link)) doc = await fetchDoc(link);
+          else {
+            // Any other link is fetched from the open web: rate-limited per person, and every hop checked.
+            reserveLinkRead(s);
+            await save();
+            const opts = { ownHost: new URL(env.APP_URL).hostname };
+            doc = looksLikeSubstack(link) ? await fetchSubstack(link, opts) : await fetchArticle(link, opts);
+          }
+        }
         else if (typeof b.text === "string" && b.text.trim()) doc = parsePasted(b.text.slice(0, 150_000), typeof b.title === "string" ? b.title.slice(0, 200) : undefined);
-        else throw new UserError("Paste a Google Doc or Substack link first.");
+        else throw new UserError("Paste a link to your piece first.");
         s.doc = doc;
         s.plan = undefined;
         await save();
@@ -314,7 +332,7 @@ async function api(req: Request, env: Env, path: string): Promise<Response> {
         s.plan = {
           publishDate,
           published: published || undefined,
-          reason: published ? reasonAfter(busy, publishDate, b.today, slots) : reasonFor(busy, publishDate, false),
+          reason: published ? reasonAfter(busy, publishDate, b.today, slots, Boolean(s.doc.dateUnknown)) : reasonFor(busy, publishDate, false),
           suggestions,
           placeholder: { channelId: ph.id, included: !published },
           createdAt: Date.now(),

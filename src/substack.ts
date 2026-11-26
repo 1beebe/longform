@@ -3,8 +3,9 @@
 // posts can be planned from what the piece actually says.
 import type { Doc } from "./session";
 import { DocError, buildDoc, clean, htmlBlocks, type Block } from "./doc";
+import { safeFetch, type SafeOptions } from "./safefetch";
+import { docFromArticle } from "./article";
 
-const UA = { "User-Agent": "Mozilla/5.0 (compatible; LongformPlanner/0.1)", Accept: "application/json, text/html;q=0.9" };
 
 export interface PostRef {
   host: string; // the publication's host: name.substack.com or its own domain
@@ -102,26 +103,28 @@ export function docFromPage(html: string, ref: PostRef): Doc {
   return docFromPost({ title, body_html: rest.slice(rest.indexOf(">") + 1), post_date: date, audience: /class="paywall/.test(html) ? "only_paid" : "everyone" }, ref);
 }
 
-export async function fetchSubstack(link: string): Promise<Doc> {
+export async function fetchSubstack(link: string, opts: Omit<SafeOptions, "accept"> = {}): Promise<Doc> {
   const ref = substackRef(link);
   const api = ref.id ? `https://substack.com/api/v1/posts/by-id/${ref.id}` : `https://${ref.host}/api/v1/posts/${ref.slug}`;
-  let res: Response;
-  try {
-    res = await fetch(api, { headers: UA, redirect: "follow" });
-  } catch {
-    throw new DocError("Couldn't reach that site. Check the link and try again.");
-  }
-  if (res.status === 404) throw new DocError("Substack couldn't find that post. Check that it's published, then copy the link again.");
-  if (res.ok && (res.headers.get("content-type") ?? "").includes("json")) {
-    const json = (await res.json().catch(() => null)) as (ApiPost & { post?: ApiPost }) | null;
+  const onSubstack = ref.host === "substack.com" || ref.host.endsWith(".substack.com");
+  // A custom domain may not be Substack at all, so its API answer can be
+  // anything: an error page, or a 404. Then the page itself is read.
+  const res = await safeFetch(api, { ...opts, accept: ["json", "html"] }).catch((err) => {
+    if (onSubstack) throw err;
+    return null;
+  });
+  if (res?.status === 404 && onSubstack) throw new DocError("Substack couldn't find that post. Check that it's published, then copy the link again.");
+  if (res && res.status === 200 && /json/i.test(res.type)) {
+    let json: (ApiPost & { post?: ApiPost }) | null = null;
+    try { json = JSON.parse(res.body); } catch { json = null; }
     const post = json?.post ?? json;
-    if (post && (post.body_html || post.truncated_body_text)) {
-      return docFromPost(post, { ...ref, link: post.canonical_url || ref.link });
+    if (post && typeof post === "object" && (post.body_html || post.truncated_body_text)) {
+      return docFromPost(post, { ...ref, link: typeof post.canonical_url === "string" && /^https:\/\//.test(post.canonical_url) ? post.canonical_url : ref.link });
     }
   }
   if (ref.id) throw new DocError("Substack didn't send that post. Open it on the publication's own page and copy that link.");
-  // Fall back to the page itself.
-  const page = await fetch(ref.link, { headers: UA, redirect: "follow" }).catch(() => null);
-  if (!page || !page.ok) throw new DocError(`That site didn't send the post (status ${page?.status ?? "no answer"}). Try again in a minute, or paste the text instead.`);
-  return docFromPage((await page.text()).slice(0, 3_000_000), ref);
+  const page = await safeFetch(ref.link, { ...opts, accept: ["html"] });
+  if (page.status !== 200) throw new DocError(`That site didn't send the post (status ${page.status}). Try again in a minute, or paste the text instead.`);
+  if (/class="(?:available-content|body markup)"/.test(page.body)) return docFromPage(page.body, ref);
+  return docFromArticle(page.body, page.url); // a /p/ link on a site that isn't Substack
 }

@@ -63,7 +63,9 @@ if (DEMO) {
   });
 }
 // PUBLISHED=1: the piece is already live on Substack, so the plan is follow-ups only.
-const PUBLISHED = process.env.PUBLISHED === "1";
+// PUBLISHED=web: the same, read from a blog page that gave no date.
+const PUBLISHED = process.env.PUBLISHED === "1" || process.env.PUBLISHED === "web";
+const WEB = process.env.PUBLISHED === "web";
 const postUrl = "https://example.substack.com/p/sample-post";
 const publishedAt = new Date(Date.now() - 3 * 86400e3).toISOString();
 if (PUBLISHED) {
@@ -72,7 +74,7 @@ if (PUBLISHED) {
   plan = {
     publishDate: on,
     published: true,
-    reason: reasonAfter(busy, on, today, after),
+    reason: reasonAfter(busy, on, today, after, WEB),
     suggestions: after.map((s, i) => ({ ...s, sectionIndex: (i % 6) + 1, sourceQuote: "[a line from your post]", text: `[Placeholder: a ${s.role} built from your own lines in section ${(i % 6) + 1}]\n\n${postUrl}`, included: true })),
     placeholder: { channelId: placeholderChannel(channels)!.id, included: false },
     createdAt: Date.now(),
@@ -83,7 +85,7 @@ const withDoc = process.env.STATE !== "nodoc";
 const me = () => ({
   signedIn, org: "My Organization", orgs: [{ id: "o", name: "My Organization" }], organizationId: "o", aiReady: true, google: { ready: true, connected: process.env.GOOGLE === "on" },
   doc: !withDoc ? null : PUBLISHED
-    ? { title: docTitle, url: postUrl, words: docWords, sections, source: "substack", publishedAt }
+    ? (WEB ? { title: docTitle, url: postUrl, words: docWords, sections, source: "web", site: "Sample Blog", publishedAt, dateUnknown: true } : { title: docTitle, url: postUrl, words: docWords, sections, source: "substack", publishedAt })
     : { title: docTitle, url: "https://docs.google.com/document/d/sample/edit", words: docWords, sections, picked: true, fileId: "sample", modifiedTime: new Date(Date.now() - 2 * 3600e3).toISOString() },
   plan: withDoc && process.env.STATE !== "noplan" ? plan : null,
   board: withDoc ? { today, rangeStart, rangeEnd, timezone: tz, channels: channels.map((c) => ({ ...c, label: serviceName(c.service), selected: true })), skipped: [], queue: queue.map((x) => ({ ...x, date: localDate(Date.parse(x.dueAt), tz) })) } : null,
