@@ -206,13 +206,13 @@
     const linkForm = h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); useDoc({ url: url.value }); } },
       url, h("button", { class: google ? "btn dark" : "btn", type: "submit", disabled: ui.busy === "doc" }, ui.busy === "doc" && !google ? "Reading…" : "Use this doc"));
     const linkHelp = h("p", null, "In Google Docs, click Share and set General access to \u201cAnyone with the link can view.\u201d Then copy the link and paste it here.");
-    const postUrl = h("input", { class: "field", type: "url", placeholder: "https://yourname.substack.com/p/…", "aria-label": "Substack post link", "data-key": "post-url" });
+    const postUrl = h("input", { class: "field", type: "url", placeholder: "https://…", "aria-label": "Link to the published piece", "data-key": "post-url" });
     const postForm = h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); useDoc({ url: postUrl.value }); } },
       postUrl, h("button", { class: "btn dark", type: "submit", disabled: ui.busy === "doc" }, ui.busy === "doc" ? "Reading…" : "Use this post"));
     app.append(
       flow(1),
       h("h1", null, "Now choose your draft"),
-      h("p", { class: "lead" }, `Buffer is connected${me.org ? ` (${me.org})` : ""}. Pick the long-form piece you're about to publish, or one that's already out on Substack.`),
+      h("p", { class: "lead" }, `Buffer is connected${me.org ? ` (${me.org})` : ""}. Pick the long-form piece you're about to publish, or one that's already out.`),
       ...banners(),
       h("section", { class: "card pick" },
         h("h2", null, "Your Google Doc"),
@@ -231,10 +231,10 @@
         h("ul", { class: "reassure" }, h("li", null, "Read only"), h("li", null, "Only the doc you pick"), h("li", null, "Nothing posts on its own")),
       ),
       h("section", { class: "card pick" },
-        h("h2", null, "Already published on Substack?"),
-        h("p", null, "Paste the post's link. The app reads the public post and plans follow-up posts over the next two weeks, each one linking back to it."),
+        h("h2", null, "Already published?"),
+        h("p", null, "Paste the link to the live piece: Substack, Medium, your blog or your own site. The app reads the public page and plans follow-up posts over the next two weeks, each one linking back to it."),
         postForm,
-        h("p", { class: "hint" }, "Paid-only posts: just the free preview can be read. Paste the text above instead if you want the whole piece.")),
+        h("p", { class: "hint" }, "It reads only what anyone can see without signing in. For a paywalled or members-only piece, paste the text above instead.")),
       h("section", { class: "card pick sample" },
         h("h2", null, "No draft handy? Try a sample piece"),
         h("p", null, "Run the whole flow on Henry David Thoreau's essay \u201cWalking\u201d (1862, public domain, about 12,000 words). The plan uses your real Buffer queue, and anything you save lands in Buffer as a draft you can delete."),
@@ -250,7 +250,7 @@
       h("h1", null, me.doc.publishedAt ? "Your follow-up plan" : "Your launch plan"),
       h("p", { class: "lead" }, p && p.published ? "Follow-up posts for your published piece, placed in the gaps in your queue over the next two weeks."
         : p ? "A publish day picked from the gaps in your queue, with posts around it from your draft. Click another day to move everything."
-        : me.doc.source === "substack" ? "Your post from Substack, your queue from Buffer." : "Your draft from Google Docs, your queue from Buffer."),
+        : me.doc.publishedAt ? "Your published piece, your queue from Buffer." : "Your draft from Google Docs, your queue from Buffer."),
       ...banners());
     app.append(sources(b));
     if (!b) return;
@@ -260,6 +260,9 @@
       dock(p);
     }
   }
+
+  // The day to star on the calendar: none when a published page gave no date.
+  const pubDay = (p) => (p.published && me.doc && me.doc.dateUnknown ? null : p.publishDate);
 
   // YYYY-MM-DD for an ISO time, in the account's timezone.
   function localYmd(iso, tz) {
@@ -273,11 +276,11 @@
     const queued = b ? b.queue.filter((q) => q.status !== "draft" && q.date >= b.today && q.date <= addDays(b.today, 28)).length : 0;
     const selected = b ? b.channels.filter((c) => c.selected) : [];
     const docCard = h("div", { class: "src" },
-      h("div", { class: `ic ${d.source === "substack" ? "s" : "g"}` }, d.source === "substack" ? "S" : "G"),
+      h("div", { class: `ic ${d.source === "substack" ? "s" : d.source === "web" ? "w" : "g"}` }, d.source === "substack" ? "S" : d.source === "web" ? "W" : "G"),
       h("div", { class: "body" },
         h("h3", null, d.title),
-        h("p", null, [d.sample ? "Sample piece, public domain" : d.source === "substack" ? `Published on Substack ${short(me.plan && me.plan.published ? me.plan.publishDate : localYmd(d.publishedAt, b && b.timezone))}` : d.url ? "Google Doc" : "Pasted draft", d.modifiedTime ? ago(d.modifiedTime) : "", `${d.words.toLocaleString()} words`].filter(Boolean).join(" · ")),
-        h("div", { class: "meta" }, d.url && !d.sample && h("span", { class: "chip ok" }, d.picked ? "Connected to Google" : d.source === "substack" ? "Read from Substack" : "Read from your link"), d.preview && h("span", { class: "chip" }, "Free preview only"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
+        h("p", null, [d.sample ? "Sample piece, public domain" : d.publishedAt ? `Published on ${d.source === "substack" ? "Substack" : d.site || "the web"}${d.dateUnknown ? "" : ` ${short(me.plan && me.plan.published ? me.plan.publishDate : localYmd(d.publishedAt, b && b.timezone))}`}` : d.url ? "Google Doc" : "Pasted draft", d.modifiedTime ? ago(d.modifiedTime) : "", `${d.words.toLocaleString()} words`].filter(Boolean).join(" · ")),
+        h("div", { class: "meta" }, d.url && !d.sample && h("span", { class: "chip ok" }, d.picked ? "Connected to Google" : d.source === "substack" ? "Read from Substack" : d.source === "web" ? "Read from the page" : "Read from your link"), d.preview && h("span", { class: "chip" }, "Free preview only"), h("span", { class: "chip" }, `${d.sections.length} section${d.sections.length === 1 ? "" : "s"}`), h("span", { class: "chip" }, `~${mins} min read`))),
       h("div", { class: "act" },
         d.picked && me.google && me.google.connected
           ? h("button", { class: "linkish", onclick: () => { if (!me.plan || confirm("Pick another doc? This clears the current plan.")) openPicker(); } }, ui.busy === "doc" ? "Reading…" : "Change doc")
@@ -315,7 +318,7 @@
     const add = (d, x) => { (by[d] = by[d] || []).push(x); };
     for (const q of b.queue) add(q.date, { kind: "q", q });
     if (p) {
-      add(p.publishDate, { kind: "p" });
+      if (pubDay(p)) add(p.publishDate, { kind: "p" });
       for (const c of cards()) add(c.date, { kind: "s", c });
     }
     return by;
@@ -391,7 +394,7 @@
       const items = by[d] || [];
       const past = d < tomorrow;
       const open = !past && dow(d) < 5 && d >= gapFrom && d <= gapTo && !items.some((x) => x.kind === "q");
-      const cls = ["day", past && "out", d === b.today && "today", open && "gap", p && d === p.publishDate && "pub"].filter(Boolean).join(" ");
+      const cls = ["day", past && "out", d === b.today && "today", open && "gap", p && d === pubDay(p) && "pub"].filter(Boolean).join(" ");
       const n = d.slice(8) === "01" || i === 0 ? short(d) : String(+d.slice(8));
       const shown = items.sort((a, c) => "pqs".indexOf(a.kind) - "pqs".indexOf(c.kind));
       const kids = [h("span", { class: "n" }, n), ...shown.slice(0, 4).map((x) => chip(x, b)), shown.length > 4 ? h("div", { class: "ev more" }, `+${shown.length - 4} more`) : null];
@@ -439,9 +442,9 @@
     };
     for (let d = b.today; d <= b.rangeEnd; d = addDays(d, 1)) {
       const items = by[d] || [];
-      if (!items.length && !(p && d === p.publishDate)) { run.push(d); continue; }
+      if (!items.length && !(p && d === pubDay(p))) { run.push(d); continue; }
       flush();
-      const pub = p && d === p.publishDate;
+      const pub = p && d === pubDay(p);
       const kids = [h("div", { class: "dt" }, DOW[dow(d)], h("b", null, d.slice(8) === "01" ? short(d) : +d.slice(8))), h("div", { class: "list" }, items.map((x) => chip(x, b, true)))];
       rows.push(p && d > b.today && ui.picking ? h("button", { class: `ag${pub ? " pub" : ""} pickable`, type: "button", onclick: () => setPublishDay(d) }, kids) : h("div", { class: `ag${pub ? " pub" : ""}` }, kids));
     }
@@ -644,7 +647,7 @@
       h("div", { class: "dock" },
         h("span", { class: "t" }, summary),
         h("span", { class: "sp" }),
-        me.doc.url ? h("a", { class: "ghost", href: me.doc.url, target: "_blank", rel: "noopener" }, me.doc.source === "substack" ? "Open the post" : "Open the doc") : null,
+        me.doc.url ? h("a", { class: "ghost", href: me.doc.url, target: "_blank", rel: "noopener" }, me.doc.publishedAt ? "Open the piece" : "Open the doc") : null,
         t.total
           ? h("button", { class: "btn", type: "button", disabled: saving, onclick: save }, saving ? "Saving…" : `Save ${t.total} draft${t.total === 1 ? "" : "s"} to Buffer`)
           : bufferAction())));

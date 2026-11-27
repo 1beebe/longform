@@ -28,7 +28,9 @@ export interface Doc {
   fileId?: string; // picked from Google Drive
   modifiedTime?: string; // ISO, from Drive
   sample?: boolean; // the bundled sample piece
-  source?: "substack"; // read from a post that's already live
+  source?: "substack" | "web"; // read from a piece that's already live
+  site?: string; // the site's name, for a piece read from the web
+  dateUnknown?: boolean; // the page didn't say when it was published
   publishedAt?: string; // ISO; set when the piece is already published
   preview?: boolean; // paywalled: only the free preview could be read
 }
@@ -71,6 +73,7 @@ export interface Session {
   plan?: Plan;
   google?: GoogleTokens; // drive.file only: reads the docs they pick
   modelCalls?: number[]; // when this person last called the model, for an hourly cap
+  linkReads?: number[]; // when this person last had a web link read, for an hourly cap
 }
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
